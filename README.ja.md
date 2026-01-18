@@ -80,7 +80,9 @@ $ cd bandstat-*/
 $ ./bandstat --help
 ```
 
-**Windows** ユーザーは WSL 経由で Linux バイナリを使用してください。
+**macOS**: バイナリは署名されていないためセキュリティの警告が表示されます。自己責任において bandstat を実行する場合は `xattr -d com.apple.quarantine ./bandstat` を実行するか、ソースからビルドしてください。
+
+**Windows**: WSL 経由で Linux バイナリを使用してください。
 
 ## 使い方
 

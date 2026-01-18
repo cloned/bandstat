@@ -82,7 +82,9 @@ $ cd bandstat-*/
 $ ./bandstat --help
 ```
 
-If you're a **Windows** user, use the Linux binary via WSL.
+**macOS users**: The binary is not signed, so a security warning will appear. To run bandstat at your own risk, execute `xattr -d com.apple.quarantine ./bandstat` or build from source.
+
+**Windows users**: Use the Linux binary via WSL.
 
 ## Usage
 
