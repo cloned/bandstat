@@ -47,6 +47,37 @@ fn mix(a: &[f32], b: &[f32]) -> Vec<f32> {
     a.iter().zip(b).map(|(x, y)| x + y).collect()
 }
 
+fn allband(duration: f32, sample_rate: u32) -> Vec<f32> {
+    // One sine wave per band (center frequency, skipping DC and AIR)
+    let freqs = [
+        30.0,    // SUB1: 20-40
+        50.0,    // SUB2: 40-60
+        90.0,    // BASS: 60-120
+        180.0,   // UBAS: 120-250
+        375.0,   // LMID: 250-500
+        750.0,   // MID: 500-1000
+        1500.0,  // UMID: 1000-2000
+        3000.0,  // HMID: 2000-4000
+        5000.0,  // PRES: 4000-6000
+        8000.0,  // BRIL: 6000-10000
+        12000.0, // HIGH: 10000-14000
+        16000.0, // UHIG: 14000-18000
+        19000.0, // AIR: 18000+
+    ];
+
+    let n = (duration * sample_rate as f32) as usize;
+    let amp = 0.05; // Lower amplitude since we're summing many waves
+
+    (0..n)
+        .map(|i| {
+            freqs
+                .iter()
+                .map(|&f| amp * (2.0 * PI * f * i as f32 / sample_rate as f32).sin())
+                .sum()
+        })
+        .collect()
+}
+
 fn main() -> std::io::Result<()> {
     let sr = 44100;
     let dur = 3.0;
@@ -68,6 +99,9 @@ fn main() -> std::io::Result<()> {
     let high = sine(3000.0, dur, sr);
     write_wav(&dir.join("mix_100_3000hz.wav"), &mix(&low, &high), sr)?;
 
-    println!("Generated: 1khz.wav, 100hz.wav, 5khz.wav, mix_100_3000hz.wav");
+    // All-band test: one sine per band (~7.7% each in Raw)
+    write_wav(&dir.join("allband.wav"), &allband(dur, sr), sr)?;
+
+    println!("Generated: 1khz.wav, 100hz.wav, 5khz.wav, mix_100_3000hz.wav, allband.wav");
     Ok(())
 }

@@ -2,18 +2,58 @@ mod analysis;
 mod audio;
 mod output;
 
+use clap::Parser;
 use rustfft::FftPlanner;
-use std::env;
 
 use analysis::{
-    FFT_SIZE, analyze_interval, analyze_stats, create_hanning_window, create_k_weight_table,
-    get_bands, powers_to_percentages,
+    DYNAMICS_DISPLAY_THRESHOLD_PCT, FFT_SIZE, analyze_interval, analyze_stats, check_sample_rate,
+    create_hanning_window, create_k_weight_table, get_bands, powers_to_percentages,
 };
 use audio::load_audio;
 use output::{
-    format_time, get_display_name, print_bands, print_diff_row, print_file_info, print_header,
-    print_legend, print_percentages, print_row, print_separator,
+    format_time, get_display_name, print_bands, print_diff_row, print_diff_row_masked_styled,
+    print_diff_row_styled, print_error, print_file_info, print_header, print_legend,
+    print_percentages, print_row, print_row_masked, print_row_masked_styled, print_row_styled,
+    print_separator, print_warning,
 };
+
+#[derive(Parser)]
+#[command(
+    name = "bandstat",
+    version,
+    about = "Audio frequency band analyzer with K-weighting and dynamics analysis",
+    after_help = "Examples:
+  bandstat audio.wav                    Single file analysis
+  bandstat my_mix.wav ref.wav           Compare files (first is base)
+  bandstat --time audio.wav             Timeline analysis
+  bandstat --time --interval 10 -w audio.wav  Timeline with 10s intervals, K-weighted
+  bandstat --no-color audio.wav         Disable colored output"
+)]
+struct Args {
+    /// Audio files to analyze (WAV, AIFF, MP3, FLAC). Up to 10 files for comparison.
+    #[arg(required = true)]
+    files: Vec<String>,
+
+    /// Timeline analysis mode (band distribution over time)
+    #[arg(long)]
+    time: bool,
+
+    /// Timeline interval in seconds
+    #[arg(long, default_value = "20", value_name = "SECONDS")]
+    interval: f32,
+
+    /// Apply K-weighting to timeline analysis
+    #[arg(short, long)]
+    weighted: bool,
+
+    /// Suppress explanations (show data only)
+    #[arg(short, long)]
+    quiet: bool,
+
+    /// Disable colored output
+    #[arg(long)]
+    no_color: bool,
+}
 
 // Stats analysis result for a single file
 struct FileStats {
@@ -27,23 +67,25 @@ struct FileStats {
 
 fn analyze_file(filename: &str, bands: &[analysis::Band], show_progress: bool) -> FileStats {
     let display_name = get_display_name(filename).to_string();
+
+    let audio = load_audio(filename).unwrap_or_else(|e| {
+        print_error(&e.to_string());
+        std::process::exit(1);
+    });
+
+    // Show sample rate warning before progress display
+    if let Some(warning) = check_sample_rate(audio.sample_rate) {
+        print_warning(&warning);
+    }
+
     if show_progress {
         eprint!("Analyzing {}... 0%", display_name);
     }
 
-    let audio = load_audio(filename).unwrap_or_else(|e| {
-        if show_progress {
-            eprintln!(" error");
-        }
-        eprintln!("{}", e);
-        std::process::exit(1);
-    });
-
     let k_weights = create_k_weight_table(FFT_SIZE, audio.sample_rate);
-    let display_name_clone = display_name.clone();
     let result = analyze_stats(&audio, bands, &k_weights, |progress| {
         if show_progress {
-            eprint!("\rAnalyzing {}... {}%", display_name_clone, progress);
+            eprint!("\rAnalyzing {}... {}%", display_name, progress);
         }
     });
 
@@ -62,14 +104,16 @@ fn analyze_file(filename: &str, bands: &[analysis::Band], show_progress: bool) -
 }
 
 // Mode: Single file stats analysis
-fn run_stats(filename: &str) {
+fn run_stats(filename: &str, quiet: bool) {
     let bands = get_bands();
-    let stats = analyze_file(filename, &bands, true);
+    let stats = analyze_file(filename, &bands, !quiet);
 
-    println!();
-    println!("Stats Analysis");
-    print_file_info(&stats.name, stats.sample_rate, stats.channels, false);
-    print_bands(&bands);
+    if !quiet {
+        println!();
+        println!("Stats Analysis");
+        print_file_info(&stats.name, stats.sample_rate, stats.channels, false);
+        print_bands(&bands);
+    }
 
     println!("[Band Power Distribution]");
     print_header(&bands, "        ");
@@ -83,57 +127,61 @@ fn run_stats(filename: &str) {
     println!("[Dynamics]");
     print_header(&bands, "        ");
     print_separator(&bands, 8);
-    print_row("Std(dB) ", &stats.dynamics);
+    print_row_masked(
+        "Dyn(dB) ",
+        &stats.dynamics,
+        &stats.raw_pct,
+        DYNAMICS_DISPLAY_THRESHOLD_PCT,
+    );
 
-    println!();
-    print_legend();
+    if !quiet {
+        println!();
+        print_legend();
+    }
 }
 
 // Mode: Compare multiple files
-fn run_compare(filenames: &[String]) {
+fn run_compare(filenames: &[String], quiet: bool) {
+    use colored::*;
+
     let bands = get_bands();
     let labels: Vec<char> = ('A'..='Z').collect();
 
     let stats: Vec<FileStats> = filenames
         .iter()
-        .map(|f| analyze_file(f, &bands, true))
+        .map(|f| analyze_file(f, &bands, !quiet))
         .collect();
 
-    println!("Comparison (reference: [A]):");
+    println!("Comparison (base: [A]):");
     for (i, s) in stats.iter().enumerate() {
-        println!("  [{}] {}", labels[i], s.name);
+        let label = format!("[{}]", labels[i]);
+        println!("  {} {}", label.bold(), s.name);
     }
     println!();
 
-    print_bands(&bands);
+    if !quiet {
+        print_bands(&bands);
+    }
 
     println!("[Band Power Distribution]");
     print_header(&bands, "        ");
     print_separator(&bands, 8);
 
     let ref_label = format!("[{}]", labels[0]);
-    print_row(&format!("{}Raw  ", ref_label), &stats[0].raw_pct);
-    print_row(&format!("{}K-wt ", ref_label), &stats[0].k_pct);
-    print_diff_row(
-        &format!("{}Diff ", ref_label),
-        &stats[0].raw_pct,
-        &stats[0].k_pct,
-    );
+    print_row_styled(&ref_label, " Raw  ", &stats[0].raw_pct);
+    print_row_styled(&ref_label, " K-wt ", &stats[0].k_pct);
+    print_diff_row_styled(&ref_label, " Diff ", &stats[0].raw_pct, &stats[0].k_pct);
 
     for (i, s) in stats.iter().enumerate().skip(1) {
         print_separator(&bands, 8);
         let label = format!("[{}]", labels[i]);
-        print_row(&format!("{}Raw  ", label), &s.raw_pct);
-        print_row(&format!("{}K-wt ", label), &s.k_pct);
-        print_diff_row(&format!("{}Diff ", label), &s.raw_pct, &s.k_pct);
+        print_row_styled(&label, " Raw  ", &s.raw_pct);
+        print_row_styled(&label, " K-wt ", &s.k_pct);
+        print_diff_row_styled(&label, " Diff ", &s.raw_pct, &s.k_pct);
         print_separator(&bands, 8);
         let diff_label = format!("{}-A", labels[i]);
-        print_diff_row(
-            &format!("{} Raw ", diff_label),
-            &stats[0].raw_pct,
-            &s.raw_pct,
-        );
-        print_diff_row(&format!("{} K-wt", diff_label), &stats[0].k_pct, &s.k_pct);
+        print_diff_row_styled(&diff_label, " Raw  ", &stats[0].raw_pct, &s.raw_pct);
+        print_diff_row_styled(&diff_label, " K-wt ", &stats[0].k_pct, &s.k_pct);
     }
 
     println!();
@@ -141,42 +189,71 @@ fn run_compare(filenames: &[String]) {
     print_header(&bands, "        ");
     print_separator(&bands, 8);
 
-    print_row(&format!("[{}]dB   ", labels[0]), &stats[0].dynamics);
+    print_row_masked_styled(
+        &format!("[{}]", labels[0]),
+        " dB   ",
+        &stats[0].dynamics,
+        &stats[0].raw_pct,
+        DYNAMICS_DISPLAY_THRESHOLD_PCT,
+    );
 
     for (i, s) in stats.iter().enumerate().skip(1) {
         print_separator(&bands, 8);
-        print_row(&format!("[{}]dB   ", labels[i]), &s.dynamics);
-        print_diff_row(
-            &format!("{}-A     ", labels[i]),
+        print_row_masked_styled(
+            &format!("[{}]", labels[i]),
+            " dB   ",
+            &s.dynamics,
+            &s.raw_pct,
+            DYNAMICS_DISPLAY_THRESHOLD_PCT,
+        );
+        print_separator(&bands, 8);
+        print_diff_row_masked_styled(
+            &format!("{}-A", labels[i]),
+            "      ",
             &stats[0].dynamics,
             &s.dynamics,
+            &stats[0].raw_pct,
+            &s.raw_pct,
+            DYNAMICS_DISPLAY_THRESHOLD_PCT,
         );
     }
 
-    println!();
-    print_legend();
+    if !quiet {
+        println!();
+        print_legend();
+    }
 }
 
 // Mode: Timeline analysis (band distribution over time)
-fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32) {
+fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet: bool) {
     let bands = get_bands();
 
     let audio = load_audio(filename).unwrap_or_else(|e| {
-        eprintln!("{}", e);
+        print_error(&e.to_string());
         std::process::exit(1);
     });
 
-    let display_name = get_display_name(filename);
-    print_file_info(
-        display_name,
-        audio.sample_rate,
-        audio.channels,
-        use_k_weighting,
-    );
-    print_bands(&bands);
+    // Show sample rate warning before output (only if K-weighting is used)
+    if use_k_weighting
+        && !quiet
+        && let Some(warning) = check_sample_rate(audio.sample_rate)
+    {
+        print_warning(&warning);
+    }
+
+    if !quiet {
+        let display_name = get_display_name(filename);
+        print_file_info(
+            display_name,
+            audio.sample_rate,
+            audio.channels,
+            use_k_weighting,
+        );
+        print_bands(&bands);
+    }
 
     if audio.samples.is_empty() {
-        eprintln!("No samples found in file");
+        print_error("No samples found in file");
         std::process::exit(1);
     }
 
@@ -193,10 +270,10 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32) {
 
     let samples_per_interval = (interval_secs * audio.sample_rate as f32) as usize;
     let total_duration = audio.samples.len() as f32 / audio.sample_rate as f32;
-    let num_intervals = (audio.samples.len() + samples_per_interval - 1) / samples_per_interval;
+    let num_intervals = audio.samples.len().div_ceil(samples_per_interval);
 
     if num_intervals == 0 {
-        eprintln!("File too short for analysis");
+        print_error("File too short for analysis");
         std::process::exit(1);
     }
 
@@ -248,96 +325,47 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32) {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args = Args::parse();
 
-    if args.len() < 2 {
-        eprintln!("Usage: {} <file> [file2] [file3] ...", args[0]);
-        eprintln!();
-        eprintln!("Supported formats: WAV, AIFF");
-        eprintln!();
-        eprintln!("Modes:");
-        eprintln!("  <file>              Stats analysis (K-weighting contribution + dynamics)");
-        eprintln!("  <file1> <file2> ... Compare files (first file is reference)");
-        eprintln!();
-        eprintln!("Options:");
-        eprintln!("  --time                Timeline analysis (band distribution over time)");
-        eprintln!("  --interval <seconds>  Timeline interval (default: 20)");
-        eprintln!("  --weighted, -w        Apply K-weighting to timeline");
+    // Handle --no-color
+    if args.no_color {
+        colored::control::set_override(false);
+    }
+
+    // Validate file count
+    if args.files.len() > 10 {
+        print_error("Too many files specified (max 10)");
         std::process::exit(1);
     }
 
-    let mut use_k_weighting = false;
-    let mut time_analysis = false;
-    let mut interval_secs = 20.0f32;
-    let mut filenames: Vec<String> = Vec::new();
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--weighted" | "-w" => {
-                use_k_weighting = true;
-            }
-            "--time" => {
-                time_analysis = true;
-            }
-            "--interval" => {
-                if i + 1 >= args.len() {
-                    eprintln!("--interval requires a value");
-                    std::process::exit(1);
-                }
-                i += 1;
-                interval_secs = args[i].parse().unwrap_or_else(|_| {
-                    eprintln!("Invalid interval value: {}", args[i]);
-                    std::process::exit(1);
-                });
-                if interval_secs <= 0.0 {
-                    eprintln!("Interval must be positive");
-                    std::process::exit(1);
-                }
-            }
-            arg if !arg.starts_with('-') => {
-                filenames.push(arg.to_string());
-            }
-            arg => {
-                eprintln!("Unknown option: {}", arg);
-                std::process::exit(1);
-            }
-        }
-        i += 1;
-    }
-
-    if filenames.is_empty() {
-        eprintln!("No input file specified");
-        std::process::exit(1);
-    }
-
-    if filenames.len() > 5 {
-        eprintln!("Too many files specified (max 5)");
+    // Validate interval
+    if args.interval <= 0.0 {
+        print_error("Interval must be positive");
         std::process::exit(1);
     }
 
     // Validate option combinations
-    if filenames.len() >= 2 && time_analysis {
-        eprintln!("--time cannot be used with multiple files");
+    if args.files.len() >= 2 && args.time {
+        print_error("--time cannot be used with multiple files");
         std::process::exit(1);
     }
 
-    if !time_analysis && use_k_weighting {
-        eprintln!("--weighted can only be used with --time");
+    if !args.time && args.weighted {
+        print_error("--weighted can only be used with --time");
         std::process::exit(1);
     }
 
-    if !time_analysis && interval_secs != 20.0 {
-        eprintln!("--interval can only be used with --time");
+    if !args.time && args.interval != 20.0 {
+        print_error("--interval can only be used with --time");
         std::process::exit(1);
     }
 
     // Dispatch to appropriate mode
-    if filenames.len() >= 2 {
-        run_compare(&filenames);
-    } else if time_analysis {
-        run_timeline(&filenames[0], use_k_weighting, interval_secs);
+    if args.files.len() >= 2 {
+        run_compare(&args.files, args.quiet);
+    } else if args.time {
+        run_timeline(&args.files[0], args.weighted, args.interval, args.quiet);
     } else {
-        run_stats(&filenames[0]);
+        run_stats(&args.files[0], args.quiet);
     }
 }

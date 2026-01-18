@@ -2,7 +2,12 @@
 name = "bandstat"
 version = "0.1.0"
 edition = "2024"
+description = "Audio frequency band analyzer for comparing mixes against reference tracks"
+authors = ["cloned"]
+license = "MIT"
 
 [dependencies]
-symphonia = { version = "0.5", features = ["aiff", "wav", "pcm"] }
+symphonia = { version = "0.5", features = ["aiff", "wav", "pcm", "mp3", "flac"] }
 rustfft = "6.2"
+clap = { version = "4", features = ["derive"] }
+colored = "2"

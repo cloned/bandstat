@@ -3,15 +3,24 @@ use std::sync::Arc;
 
 use crate::audio::AudioData;
 
-pub const FFT_SIZE: usize = 4096;
+pub(crate) const FFT_SIZE: usize = 4096;
 
-pub struct Band {
-    pub label: &'static str,
-    pub low_hz: f32,
-    pub high_hz: f32,
+/// Minimum power threshold to avoid log(0) in dB calculations
+const MIN_POWER: f64 = 1e-20;
+
+/// Dynamics threshold in dB below band peak (frames below this are considered inaudible)
+const DYNAMICS_THRESHOLD_DB: f64 = 60.0;
+
+/// Minimum band power percentage to display dynamics (bands below this show "-")
+pub(crate) const DYNAMICS_DISPLAY_THRESHOLD_PCT: f64 = 0.5;
+
+pub(crate) struct Band {
+    pub(crate) label: &'static str,
+    pub(crate) low_hz: f32,
+    pub(crate) high_hz: f32,
 }
 
-pub fn get_bands() -> Vec<Band> {
+pub(crate) fn get_bands() -> Vec<Band> {
     vec![
         Band {
             label: "DC",
@@ -81,12 +90,12 @@ pub fn get_bands() -> Vec<Band> {
         Band {
             label: "AIR",
             low_hz: 18000.0,
-            high_hz: 22050.0,
+            high_hz: f32::MAX,
         },
     ]
 }
 
-pub fn create_hanning_window(size: usize) -> Vec<f32> {
+pub(crate) fn create_hanning_window(size: usize) -> Vec<f32> {
     let pi2 = 2.0 * std::f32::consts::PI;
     (0..size)
         .map(|i| 0.5 * (1.0 - (pi2 * i as f32 / (size - 1) as f32).cos()))
@@ -97,7 +106,7 @@ pub fn create_hanning_window(size: usize) -> Vec<f32> {
 /// Coefficients:
 /// - 48kHz: ITU-R BS.1770-4 Table 1
 /// - 44.1kHz: derived via bilinear transform (cf. pyloudnorm, libebur128)
-pub fn k_weight(freq: f64, sample_rate: f64) -> f64 {
+fn k_weight(freq: f64, sample_rate: f64) -> f64 {
     use std::f64::consts::PI;
 
     if freq <= 0.0 {
@@ -159,7 +168,21 @@ pub fn k_weight(freq: f64, sample_rate: f64) -> f64 {
     (pre_mag_sq * rlb_mag_sq).sqrt()
 }
 
-pub fn create_k_weight_table(fft_size: usize, sample_rate: u32) -> Vec<f64> {
+/// Check if the sample rate has optimized K-weighting coefficients.
+/// Returns a warning message if not.
+pub(crate) fn check_sample_rate(sample_rate: u32) -> Option<String> {
+    if matches!(sample_rate, 48000 | 44100) {
+        None
+    } else {
+        Some(format!(
+            "Warning: K-weighting coefficients are optimized for 48kHz/44.1kHz. \
+             Using approximate values for {}Hz.",
+            sample_rate
+        ))
+    }
+}
+
+pub(crate) fn create_k_weight_table(fft_size: usize, sample_rate: u32) -> Vec<f64> {
     let freq_per_bin = sample_rate as f64 / fft_size as f64;
     let sr = sample_rate as f64;
     (0..fft_size / 2)
@@ -171,7 +194,7 @@ pub fn create_k_weight_table(fft_size: usize, sample_rate: u32) -> Vec<f64> {
         .collect()
 }
 
-pub fn analyze_interval(
+pub(crate) fn analyze_interval(
     samples: &[f32],
     fft: &Arc<dyn rustfft::Fft<f32>>,
     window: &[f32],
@@ -216,7 +239,7 @@ pub fn analyze_interval(
     band_powers
 }
 
-pub fn powers_to_percentages(powers: &[f64]) -> Vec<f64> {
+pub(crate) fn powers_to_percentages(powers: &[f64]) -> Vec<f64> {
     let total: f64 = powers.iter().sum();
     if total > 0.0 {
         powers.iter().map(|p| (p / total) * 100.0).collect()
@@ -226,14 +249,14 @@ pub fn powers_to_percentages(powers: &[f64]) -> Vec<f64> {
 }
 
 /// Result of unified stats analysis
-pub struct StatsResult {
-    pub raw_powers: Vec<f64>,
-    pub k_powers: Vec<f64>,
-    pub dynamics: Vec<f64>,
+pub(crate) struct StatsResult {
+    pub(crate) raw_powers: Vec<f64>,
+    pub(crate) k_powers: Vec<f64>,
+    pub(crate) dynamics: Vec<f64>,
 }
 
 /// Analyze all stats in a single FFT pass with optional progress callback
-pub fn analyze_stats<F>(
+pub(crate) fn analyze_stats<F>(
     audio: &AudioData,
     bands: &[Band],
     k_weights: &[f64],
@@ -288,7 +311,7 @@ where
             k_powers[band_idx] += k_power;
 
             // Collect dB for dynamics (using raw power)
-            if raw_power > 1e-20 {
+            if raw_power > MIN_POWER {
                 band_db_per_frame[band_idx].push(10.0 * raw_power.log10());
             }
         }
@@ -307,19 +330,7 @@ where
     }
 
     // Calculate dynamics (standard deviation of dB values)
-    let total_max_power: f64 = band_db_per_frame
-        .iter()
-        .map(|dbs| dbs.iter().cloned().fold(f64::NEG_INFINITY, f64::max))
-        .filter(|&v| v.is_finite())
-        .map(|db| 10.0_f64.powf(db / 10.0))
-        .sum();
-
-    let significance_threshold_db = if total_max_power > 0.0 {
-        10.0 * total_max_power.log10() - 40.0
-    } else {
-        f64::NEG_INFINITY
-    };
-
+    // Filter out frames below threshold from band's max (inaudible in normal playback)
     let dynamics: Vec<f64> = band_db_per_frame
         .iter()
         .map(|dbs| {
@@ -328,13 +339,18 @@ where
             }
 
             let max_db = dbs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            if max_db < significance_threshold_db {
+            let threshold = max_db - DYNAMICS_THRESHOLD_DB;
+
+            // Filter frames above threshold
+            let filtered: Vec<f64> = dbs.iter().cloned().filter(|&db| db >= threshold).collect();
+
+            if filtered.is_empty() {
                 return f64::NEG_INFINITY;
             }
 
-            let n = dbs.len() as f64;
-            let mean = dbs.iter().sum::<f64>() / n;
-            let variance = dbs.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n;
+            let n = filtered.len() as f64;
+            let mean = filtered.iter().sum::<f64>() / n;
+            let variance = filtered.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n;
             variance.sqrt()
         })
         .collect();
@@ -468,7 +484,11 @@ mod tests {
         // Constant values should have std dev = 0
         let values = vec![5.0, 5.0, 5.0, 5.0];
         let sd = std_dev(&values);
-        assert!(sd.abs() < 1e-10, "Constant values should have σ=0, got {}", sd);
+        assert!(
+            sd.abs() < 1e-10,
+            "Constant values should have σ=0, got {}",
+            sd
+        );
     }
 
     #[test]
@@ -476,11 +496,7 @@ mod tests {
         // σ of [2, 4, 4, 4, 5, 5, 7, 9] = 2.0
         let values = vec![2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
         let sd = std_dev(&values);
-        assert!(
-            (sd - 2.0).abs() < 1e-10,
-            "Expected σ=2.0, got {}",
-            sd
-        );
+        assert!((sd - 2.0).abs() < 1e-10, "Expected σ=2.0, got {}", sd);
     }
 
     #[test]
