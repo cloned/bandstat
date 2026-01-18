@@ -177,7 +177,7 @@ pub(crate) fn check_sample_rate(sample_rate: u32) -> Option<String> {
         None
     } else {
         Some(format!(
-            "Warning: K-weighting coefficients are optimized for 48kHz/44.1kHz. \
+            "K-weighting coefficients are optimized for 48kHz/44.1kHz. \
              Using approximate values for {}Hz.",
             sample_rate
         ))

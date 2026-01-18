@@ -152,6 +152,15 @@ fn run_compare(filenames: &[String], quiet: bool) {
         .map(|f| analyze_file(f, &bands, !quiet))
         .collect();
 
+    // Warn if sample rates differ between files
+    let first_rate = stats[0].sample_rate;
+    let has_mismatch = stats.iter().skip(1).any(|s| s.sample_rate != first_rate);
+    if has_mismatch {
+        print_warning(
+            "Sample rates differ between files. For accurate comparison, use files with identical sample rates.",
+        );
+    }
+
     println!("Comparison (base: [A]):");
     for (i, s) in stats.iter().enumerate() {
         let label = format!("[{}]", labels[i]);
