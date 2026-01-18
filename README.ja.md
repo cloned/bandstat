@@ -71,6 +71,7 @@ bandstat は2つの音源から各帯域のパワー分布をパーセンテー�
 | **macOS (Apple Silicon)** | `bandstat-vX.X.X-aarch64-apple-darwin.tar.gz` |
 | **macOS (Intel)** | `bandstat-vX.X.X-x86_64-apple-darwin.tar.gz` |
 | **Linux (x86_64)** | `bandstat-vX.X.X-x86_64-unknown-linux-gnu.tar.gz` |
+| **Linux (ARM64)** | `bandstat-vX.X.X-aarch64-unknown-linux-gnu.tar.gz` |
 
 **macOS**: バイナリは署名されていないためセキュリティの警告が表示されます。自己責任において bandstat を実行する場合は `xattr -d com.apple.quarantine ./bandstat` を実行するか、ソースからビルドしてください。
 
