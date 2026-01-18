@@ -189,32 +189,6 @@ pub(crate) fn print_diff_row(label: &str, a: &[f64], b: &[f64]) {
     println!();
 }
 
-#[allow(dead_code)]
-pub(crate) fn print_diff_row_masked(
-    label: &str,
-    a: &[f64],
-    b: &[f64],
-    mask_a: &[f64],
-    mask_b: &[f64],
-    threshold: f64,
-) {
-    print!("{}", label);
-    for (((va, vb), ma), mb) in a.iter().zip(b).zip(mask_a).zip(mask_b) {
-        // Show "-" if either value is below threshold
-        if *ma < threshold || *mb < threshold {
-            print!("     -");
-        } else {
-            let diff = vb - va;
-            if diff.is_finite() {
-                print_colored_diff(diff);
-            } else {
-                print!("     -");
-            }
-        }
-    }
-    println!();
-}
-
 pub(crate) fn print_file_info(
     display_name: &str,
     sample_rate: u32,

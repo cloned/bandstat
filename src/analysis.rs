@@ -139,11 +139,12 @@ fn k_weight(freq: f64, sample_rate: f64) -> f64 {
         )
     };
 
-    let num_re = b0_pre + b1_pre * cos_w + b2_pre * cos_2w;
-    let num_im = -b1_pre * sin_w - b2_pre * sin_2w;
-    let den_re = 1.0 + a1_pre * cos_w + a2_pre * cos_2w;
-    let den_im = -a1_pre * sin_w - a2_pre * sin_2w;
-    let pre_mag_sq = (num_re * num_re + num_im * num_im) / (den_re * den_re + den_im * den_im);
+    let pre_num_re = b0_pre + b1_pre * cos_w + b2_pre * cos_2w;
+    let pre_num_im = -b1_pre * sin_w - b2_pre * sin_2w;
+    let pre_den_re = 1.0 + a1_pre * cos_w + a2_pre * cos_2w;
+    let pre_den_im = -a1_pre * sin_w - a2_pre * sin_2w;
+    let pre_mag_sq = (pre_num_re * pre_num_re + pre_num_im * pre_num_im)
+        / (pre_den_re * pre_den_re + pre_den_im * pre_den_im);
 
     // RLB (high-pass) biquad coefficients
     let (b0_rlb, b1_rlb, b2_rlb, a1_rlb, a2_rlb) = if (sample_rate - 48000.0).abs() < 1.0 {
@@ -159,11 +160,12 @@ fn k_weight(freq: f64, sample_rate: f64) -> f64 {
         )
     };
 
-    let num_re = b0_rlb + b1_rlb * cos_w + b2_rlb * cos_2w;
-    let num_im = -b1_rlb * sin_w - b2_rlb * sin_2w;
-    let den_re = 1.0 + a1_rlb * cos_w + a2_rlb * cos_2w;
-    let den_im = -a1_rlb * sin_w - a2_rlb * sin_2w;
-    let rlb_mag_sq = (num_re * num_re + num_im * num_im) / (den_re * den_re + den_im * den_im);
+    let rlb_num_re = b0_rlb + b1_rlb * cos_w + b2_rlb * cos_2w;
+    let rlb_num_im = -b1_rlb * sin_w - b2_rlb * sin_2w;
+    let rlb_den_re = 1.0 + a1_rlb * cos_w + a2_rlb * cos_2w;
+    let rlb_den_im = -a1_rlb * sin_w - a2_rlb * sin_2w;
+    let rlb_mag_sq = (rlb_num_re * rlb_num_re + rlb_num_im * rlb_num_im)
+        / (rlb_den_re * rlb_den_re + rlb_den_im * rlb_den_im);
 
     (pre_mag_sq * rlb_mag_sq).sqrt()
 }

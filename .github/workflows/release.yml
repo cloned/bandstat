@@ -38,9 +38,11 @@ jobs:
 
       - name: Package
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../bandstat-${{ github.ref_name }}-${{ matrix.target }}.tar.gz bandstat
-          cd ../../..
+          ARCHIVE_DIR=bandstat-${{ github.ref_name }}-${{ matrix.target }}
+          mkdir -p "$ARCHIVE_DIR"
+          cp target/${{ matrix.target }}/release/bandstat "$ARCHIVE_DIR/"
+          cp LICENSE README.md "$ARCHIVE_DIR/"
+          tar czf "$ARCHIVE_DIR.tar.gz" "$ARCHIVE_DIR"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

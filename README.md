@@ -1,21 +1,18 @@
 # bandstat
 
+bandstat is a command-line audio frequency band analyzer for comparing mixes against reference tracks.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg)](https://www.rust-lang.org/)
 
-Audio frequency band analyzer for comparing mixes against reference tracks.
+[日本語](README.ja.md)
 
-Identifies frequency band differences to help understand your mix's tonal balance. Not intended for precise measurement—for features like LUFS, use ffmpeg which is more reliable.
-
-## Quick Example
+## Example
 
 Compare your mix with a reference track:
 
-```bash
-bandstat your_mix.wav reference.wav -q
 ```
-
-```
+$ bandstat -q your_mix.wav reference.wav
 Comparison (base: [A]):
   [A] your_mix.wav
   [B] reference.wav
@@ -35,89 +32,91 @@ B-A Raw    0.0   0.0  +0.1 +13.6  -5.5  -5.1  +0.1   0.0  -3.2  -0.4  +0.5   0.0
 B-A K-wt   0.0  +0.1  +4.8 +15.5  -3.9  -4.9  -0.9  -1.3  -8.4  -1.5  +0.7  -0.1   0.0   0.0
 ```
 
-**Reading**: B-A Raw shows BASS +13.6%, indicating your mix may lack low-end compared to the reference. Also, your mix's K-wt HMID is 23.8%—this means it sounds quite loud in that range after K-weighting. Check if this is intentional.
+**How to read**: B-A Raw shows BASS +13.6%, meaning the reference has 13.6% more bass than your mix. Your mix's K-wt HMID is 23.8%, indicating that range sounds perceptually prominent.
+
+Track how frequency balance changes across sections:
+
+```
+$ bandstat -tq audio.wav
+TIME      DC  SUB1  SUB2  BASS  UBAS  LMID   MID  UMID  HMID  PRES  BRIL  HIGH  UHIG   AIR
+------------------------------------------------------------------------------------------
+00:00    0.0   0.1   4.5  11.2  15.7  21.8  22.0  15.1   6.1   2.1   1.1   0.3   0.1   0.0
+00:20    0.0   0.1   9.4  15.6  27.0   9.2   9.7   9.0  14.3   3.7   1.6   0.4   0.1   0.0
+00:40    0.0   0.1  12.6  23.8  21.3   8.4   7.4   7.7  13.0   3.6   1.7   0.3   0.0   0.0
+01:00    0.0   0.1  10.1  24.6  18.3   7.5   9.0  10.1  14.2   4.6   1.4   0.2   0.0   0.0
+------------------------------------------------------------------------------------------
+AVG      0.0   0.1   9.1  18.0  21.1  12.2  12.3  10.4  11.6   3.3   1.5   0.3   0.0   0.0
+```
+
+Useful when the track's overall average doesn't reflect section-by-section differences—for example, an intro with sparse mids vs. a bass-heavy chorus.
 
 ## Why bandstat?
 
-Most spectrum analyzers show absolute dB levels per band. Even with gain matching to align overall loudness, you're still comparing absolute values per band—which doesn't directly tell you how the frequency balance is distributed across the spectrum.
+When A/B-ing your mix against a reference track, you can hear that something's different, but pinpointing which frequencies differ and by how much is hard. Real-time spectrum analyzers don't make this easier—reading differences from moving waveforms is impractical, and you end up with vague impressions like "maybe the low end is lacking."
 
-bandstat shows **relative power distribution** as percentages. This lets you compare tonal balance directly, regardless of overall loudness. Free, runs from the command line, and outputs numbers instead of graphs.
+bandstat takes two audio files and outputs the power distribution of each frequency band as percentages, along with the difference. You get concrete numbers like "BASS is 13% lower, HMID is 8% higher." Since it uses percentages, you can compare files with different LUFS levels directly without gain matching.
 
 ## Features
 
-- **Band Power Distribution**: Power percentage in 14 frequency bands (DC to AIR)
-- **K-weighting**: [ITU-R BS.1770-4](https://www.itu.int/rec/R-REC-BS.1770) weighting that reflects human hearing (optimized for 44.1/48kHz)
-- **Dynamics**: Per-band dynamics in dB (lower = more compressed)
-- **File Comparison**: Compare up to 10 files
-- **Timeline Mode**: Track changes over time
+* 14 frequency bands from DC to AIR
+* K-weighting based on [ITU-R BS.1770-4](https://www.itu.int/rec/R-REC-BS.1770) (optimized for 44.1/48kHz)
+* Per-band dynamics analysis
+* Compare up to 10 files
+* Timeline mode for tracking changes over time
 
 ## Installation
 
-Download the latest release from [Releases](../../releases) and extract:
+[Releases](../../releases) has precompiled binaries for the following platforms:
 
-### macOS
+| Platform | Archive |
+|----------|---------|
+| **macOS (Apple Silicon)** | `bandstat-vX.X.X-aarch64-apple-darwin.tar.gz` |
+| **macOS (Intel)** | `bandstat-vX.X.X-x86_64-apple-darwin.tar.gz` |
+| **Linux (x86_64)** | `bandstat-vX.X.X-x86_64-unknown-linux-gnu.tar.gz` |
 
-```bash
-# Apple Silicon
-tar xzf bandstat-*-aarch64-apple-darwin.tar.gz
+Download and extract:
 
-# Intel
-tar xzf bandstat-*-x86_64-apple-darwin.tar.gz
-
-./bandstat --help
+```
+$ tar xzf bandstat-*.tar.gz
+$ cd bandstat-*/
+$ ./bandstat --help
 ```
 
-### Linux
-
-```bash
-tar xzf bandstat-*-x86_64-unknown-linux-gnu.tar.gz
-./bandstat --help
-```
-
-### Windows (WSL)
-
-Use the Linux binary via WSL:
-
-```powershell
-wsl tar xzf bandstat-*-x86_64-unknown-linux-gnu.tar.gz
-wsl ./bandstat audio.wav
-```
-
-### Build from Source
-
-Requires Rust 1.85+:
-
-```bash
-cargo build --release
-./target/release/bandstat --help
-```
+If you're a **Windows** user, use the Linux binary via WSL.
 
 ## Usage
 
-```bash
-bandstat audio.wav                              # Single file analysis
-bandstat your_mix.wav ref1.wav ref2.wav         # Compare (first file = base)
-bandstat --time audio.wav                       # Timeline analysis
-bandstat --time --interval 10 -w audio.wav      # Timeline with 10s intervals, K-weighted
-bandstat -q audio.wav                           # Quiet mode (suppress explanations)
-bandstat --no-color audio.wav                   # Disable colored output
+```
+bandstat audio.wav                                   # Single file analysis
+bandstat my_mix.wav ref.wav                          # Compare files (first = base)
+bandstat --time audio.wav                            # Timeline analysis
+bandstat --time --interval 10 --weighted audio.wav   # 10s intervals, K-weighted
+bandstat --quiet audio.wav                           # Quiet mode
+bandstat --no-color audio.wav                        # Disable colored output
 ```
 
-### Output
+### Options
 
-- **Raw(%)**: Power distribution across bands
-- **K-wt(%)**: Same as Raw, with K-weighting applied (reflects human hearing)
-- **Diff**: K-wt minus Raw (positive = perceived louder than raw measurement)
-- **Dyn(dB)**: Per-band dynamics (lower = more compressed). Bands below 0.5% power show "-"
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--time` | `-t` | Timeline analysis mode |
+| `--interval <SECONDS>` | `-i` | Timeline interval (default: 20) |
+| `--weighted` | `-w` | Apply K-weighting to timeline |
+| `--quiet` | `-q` | Suppress explanations |
+| `--no-color` | | Disable colored output |
 
-## Supported Formats
+### Output columns
 
-- WAV
-- AIFF
-- MP3
-- FLAC
+* **Raw(%)**: Power distribution across bands
+* **K-wt(%)**: Same as Raw, with K-weighting applied
+* **Diff**: K-wt minus Raw (positive = perceived louder than measured)
+* **Dyn(dB)**: Per-band dynamics (lower = more compressed)
 
-## Frequency Bands
+### Supported formats
+
+WAV, AIFF, MP3, FLAC
+
+### Frequency bands
 
 | Band | Range (Hz) | Description |
 |------|------------|-------------|
@@ -136,7 +135,24 @@ bandstat --no-color audio.wav                   # Disable colored output
 | UHIG | 14000-18000| Ultra high |
 | AIR  | 18000+     | Air |
 
-**Design notes**: DC band helps detect unwanted DC offset or rumble. Sub-bass is split into SUB1/SUB2 to diagnose low-frequency issues common in home studio mixes (e.g., excessive 40-60Hz buildup vs. true sub-bass).
+DC band helps detect unwanted DC offset or rumble. Sub-bass is split into SUB1/SUB2 to diagnose low-frequency issues that can be hard to distinguish depending on your monitoring environment.
+
+## Building
+
+bandstat is written in Rust. Building requires Rust 1.85 or newer.
+
+```
+$ git clone https://github.com/cloned/bandstat.git
+$ cd bandstat
+$ cargo build --release
+$ ./target/release/bandstat --help
+```
+
+### Running tests
+
+```
+$ cargo test
+```
 
 ## License
 

@@ -23,11 +23,11 @@ use output::{
     version,
     about = "Audio frequency band analyzer with K-weighting and dynamics analysis",
     after_help = "Examples:
-  bandstat audio.wav                    Single file analysis
-  bandstat my_mix.wav ref.wav           Compare files (first is base)
-  bandstat --time audio.wav             Timeline analysis
-  bandstat --time --interval 10 -w audio.wav  Timeline with 10s intervals, K-weighted
-  bandstat --no-color audio.wav         Disable colored output"
+  bandstat audio.wav                                   Single file analysis
+  bandstat my_mix.wav ref.wav                          Compare files (first is base)
+  bandstat --time audio.wav                            Timeline analysis
+  bandstat --time --interval 10 --weighted audio.wav   10s intervals, K-weighted
+  bandstat --no-color audio.wav                        Disable colored output"
 )]
 struct Args {
     /// Audio files to analyze (WAV, AIFF, MP3, FLAC). Up to 10 files for comparison.
@@ -35,11 +35,11 @@ struct Args {
     files: Vec<String>,
 
     /// Timeline analysis mode (band distribution over time)
-    #[arg(long)]
+    #[arg(short, long)]
     time: bool,
 
     /// Timeline interval in seconds
-    #[arg(long, default_value = "20", value_name = "SECONDS")]
+    #[arg(short, long, default_value = "20", value_name = "SECONDS")]
     interval: f32,
 
     /// Apply K-weighting to timeline analysis
