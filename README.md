@@ -74,17 +74,9 @@ bandstat takes two audio files and outputs the power distribution of each freque
 | **macOS (Intel)** | `bandstat-vX.X.X-x86_64-apple-darwin.tar.gz` |
 | **Linux (x86_64)** | `bandstat-vX.X.X-x86_64-unknown-linux-gnu.tar.gz` |
 
-Download and extract:
+**macOS**: The binary is not signed, so a security warning will appear. To run bandstat at your own risk, execute `xattr -d com.apple.quarantine ./bandstat` or build from source.
 
-```
-$ tar xzf bandstat-*.tar.gz
-$ cd bandstat-*/
-$ ./bandstat --help
-```
-
-**macOS users**: The binary is not signed, so a security warning will appear. To run bandstat at your own risk, execute `xattr -d com.apple.quarantine ./bandstat` or build from source.
-
-**Windows users**: Use the Linux binary via WSL.
+**Windows**: Use the Linux binary via WSL.
 
 ## Usage
 
