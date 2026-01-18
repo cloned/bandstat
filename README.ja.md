@@ -1,6 +1,6 @@
 # bandstat
 
-bandstat はリファレンストラックとミックスを比較するためのコマンドライン周波数帯域アナライザーです。
+bandstat はリファレンストラックとミックスを比較するためのコマンドライン周波数帯域アナライザーです。MIX・マスタリング時のEQの参考やヒントを得るために利用できます。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg)](https://www.rust-lang.org/)

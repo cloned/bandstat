@@ -1,6 +1,6 @@
 # bandstat
 
-bandstat is a command-line audio frequency band analyzer for comparing mixes against reference tracks.
+bandstat is a command-line audio frequency band analyzer for comparing mixes against reference tracks. Useful for getting EQ hints during mixing and mastering.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg)](https://www.rust-lang.org/)
