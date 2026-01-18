@@ -48,11 +48,11 @@ TIME      DC  SUB1  SUB2  BASS  UBAS  LMID   MID  UMID  HMID  PRES  BRIL  HIGH  
 AVG      0.0   0.1   9.1  18.0  21.1  12.2  12.3  10.4  11.6   3.3   1.5   0.3   0.0   0.0
 ```
 
-Useful when the track's overall average doesn't reflect section-by-section differences—for example, an intro with sparse mids vs. a bass-heavy chorus.
+Useful when the track's overall average doesn't reflect section-by-section reality. For example, a track with a sparse-mid intro and a bass-heavy chorus.
 
 ## Why bandstat?
 
-When A/B-ing your mix against a reference track, you can hear that something's different, but pinpointing which frequencies differ and by how much is hard. Real-time spectrum analyzers don't make this easier—reading differences from moving waveforms is impractical, and you end up with vague impressions like "maybe the low end is lacking."
+When A/B-ing your mix against a reference track, you can hear that something's different, but pinpointing which frequencies differ and by how much is hard. Real-time spectrum analyzers don't help much either. Reading differences from moving waveforms is impractical, and you end up with vague impressions like "maybe the low end is lacking."
 
 bandstat takes two audio files and outputs the power distribution of each frequency band as percentages, along with the difference. You get concrete numbers like "BASS is 13% lower, HMID is 8% higher." Since it uses percentages, you can compare files with different LUFS levels directly without gain matching.
 
