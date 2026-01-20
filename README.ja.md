@@ -32,6 +32,10 @@ B-A K-wt   0.0  +0.1  +4.8 +15.5  -3.9  -4.9  -0.9  -1.3  -8.4  -1.5  +0.7  -0.1
 
 **読み方**: B-A Raw の BASS が +13.6% なので、リファレンスの方が低域が 13.6% 多いことを示しています。K-wt の HMID が 23.8% と高く、その帯域が聴感上目立って聞こえます。
 
+`--image` でビジュアル比較も可能です。
+
+![比較グラフ](docs/comparison_2files.png)
+
 セクションごとの帯域バランスの変化を確認することもできます。
 
 ```
@@ -61,6 +65,7 @@ bandstat は2つの音源から各帯域のパワー分布をパーセンテー�
 * 帯域ごとのダイナミクス分析
 * 最大10ファイルを比較
 * タイムラインモードで時間経過による変化を追跡
+* PNGグラフ出力
 
 ## インストール
 
@@ -82,6 +87,7 @@ bandstat は2つの音源から各帯域のパワー分布をパーセンテー�
 ```
 bandstat audio.wav                                   # 単一ファイル分析
 bandstat my_mix.wav ref.wav                          # ファイル比較（最初が基準）
+bandstat a.wav b.wav --image chart.png               # 比較グラフを出力
 bandstat --time audio.wav                            # タイムライン分析
 bandstat --time --interval 10 --weighted audio.wav   # 10秒間隔、K-weighted
 bandstat --quiet audio.wav                           # 静音モード
@@ -97,6 +103,15 @@ bandstat --no-color audio.wav                        # 色出力を無効化
 | `--weighted` | `-w` | タイムラインに K-weighting を適用 |
 | `--quiet` | `-q` | 説明を省略 |
 | `--no-color` | | 色出力を無効化 |
+| `--image <PATH>` | | 比較グラフを PNG で出力（2-4ファイル） |
+
+### グラフ出力
+
+`--image` で比較グラフを生成できます。最大4ファイルまで対応しています。
+
+![4ファイル比較](docs/comparison_4files.png)
+
+棒グラフが Raw（実測値）、折れ線が K-weighted（聴感補正値）です。
 
 ### 出力の見方
 

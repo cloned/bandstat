@@ -1,5 +1,6 @@
 mod analysis;
 mod audio;
+mod chart;
 mod output;
 
 use clap::Parser;
@@ -53,6 +54,10 @@ struct Args {
     /// Disable colored output
     #[arg(long)]
     no_color: bool,
+
+    /// Output comparison chart as PNG image (comparison mode only)
+    #[arg(long, value_name = "PATH")]
+    image: Option<String>,
 }
 
 // Stats analysis result for a single file
@@ -141,7 +146,7 @@ fn run_stats(filename: &str, quiet: bool) {
 }
 
 // Mode: Compare multiple files
-fn run_compare(filenames: &[String], quiet: bool) {
+fn run_compare(filenames: &[String], quiet: bool, image_path: Option<&str>) {
     use colored::*;
 
     let bands = get_bands();
@@ -230,6 +235,26 @@ fn run_compare(filenames: &[String], quiet: bool) {
     if !quiet {
         println!();
         print_legend();
+    }
+
+    // Output chart image if requested
+    if let Some(path) = image_path {
+        let file_data: Vec<chart::FileChartData> = stats
+            .iter()
+            .enumerate()
+            .map(|(i, s)| chart::FileChartData {
+                label: labels[i],
+                name: s.name.clone(),
+                raw_pct: s.raw_pct.clone(),
+                k_pct: s.k_pct.clone(),
+            })
+            .collect();
+
+        if let Err(e) = chart::render_comparison_chart(&file_data, &bands, path) {
+            print_error(&e);
+        } else {
+            eprintln!("Chart saved to: {}", path);
+        }
     }
 }
 
@@ -369,9 +394,36 @@ fn main() {
         std::process::exit(1);
     }
 
+    if args.image.is_some() && args.files.len() < 2 {
+        print_error("--image can only be used with comparison mode (2+ files)");
+        std::process::exit(1);
+    }
+
+    if args.image.is_some() && args.files.len() > chart::max_chart_files() {
+        print_error(&format!(
+            "--image supports up to {} files",
+            chart::max_chart_files()
+        ));
+        std::process::exit(1);
+    }
+
+    // Validate image output path
+    if let Some(ref path) = args.image {
+        use std::path::Path;
+        if let Some(parent) = Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                print_error(&format!(
+                    "Directory does not exist: {}",
+                    parent.display()
+                ));
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Dispatch to appropriate mode
     if args.files.len() >= 2 {
-        run_compare(&args.files, args.quiet);
+        run_compare(&args.files, args.quiet, args.image.as_deref());
     } else if args.time {
         run_timeline(&args.files[0], args.weighted, args.interval, args.quiet);
     } else {

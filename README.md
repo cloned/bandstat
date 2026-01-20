@@ -34,6 +34,10 @@ B-A K-wt   0.0  +0.1  +4.8 +15.5  -3.9  -4.9  -0.9  -1.3  -8.4  -1.5  +0.7  -0.1
 
 **How to read**: B-A Raw shows BASS +13.6%, meaning the reference has 13.6% more bass than your mix. Your mix's K-wt HMID is 23.8%, indicating that range sounds perceptually prominent.
 
+Add `--image` for a visual comparison:
+
+![Comparison chart](docs/comparison_2files.png)
+
 Track how frequency balance changes across sections:
 
 ```
@@ -63,6 +67,7 @@ bandstat takes two audio files and outputs the power distribution of each freque
 * Per-band dynamics analysis
 * Compare up to 10 files
 * Timeline mode for tracking changes over time
+* PNG chart output for visual comparison
 
 ## Installation
 
@@ -84,6 +89,7 @@ bandstat takes two audio files and outputs the power distribution of each freque
 ```
 bandstat audio.wav                                   # Single file analysis
 bandstat my_mix.wav ref.wav                          # Compare files (first = base)
+bandstat a.wav b.wav --image chart.png               # Output comparison chart
 bandstat --time audio.wav                            # Timeline analysis
 bandstat --time --interval 10 --weighted audio.wav   # 10s intervals, K-weighted
 bandstat --quiet audio.wav                           # Quiet mode
@@ -99,6 +105,15 @@ bandstat --no-color audio.wav                        # Disable colored output
 | `--weighted` | `-w` | Apply K-weighting to timeline |
 | `--quiet` | `-q` | Suppress explanations |
 | `--no-color` | | Disable colored output |
+| `--image <PATH>` | | Output comparison chart as PNG (2-4 files) |
+
+### Chart output
+
+Use `--image` to generate a visual comparison chart. Supports up to 4 files:
+
+![Comparison chart with 4 files](docs/comparison_4files.png)
+
+The chart shows Raw power distribution as bars and K-weighted values as lines.
 
 ### Output columns
 
