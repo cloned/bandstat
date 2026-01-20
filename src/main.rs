@@ -26,6 +26,7 @@ use output::{
     after_help = "Examples:
   bandstat audio.wav                                   Single file analysis
   bandstat my_mix.wav ref.wav                          Compare files (first is base)
+  bandstat a.wav b.wav --image chart.png               Output comparison chart
   bandstat --time audio.wav                            Timeline analysis
   bandstat --time --interval 10 --weighted audio.wav   10s intervals, K-weighted
   bandstat --no-color audio.wav                        Disable colored output"
