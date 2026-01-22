@@ -12,8 +12,11 @@ use charming::{
 };
 
 use super::colors::{COLOR_BACKGROUND, COLOR_GRID, COLOR_TEXT, TIMELINE_BAND_COLORS};
-use super::{CHART_HEIGHT, CHART_WIDTH, TimelineChartData};
+use super::{CHART_WIDTH, TimelineChartData, build_band_legend_label};
 use crate::analysis::Band;
+
+/// Chart height for stacked charts
+const STACKED_CHART_HEIGHT: u32 = 1200;
 
 /// Render a stacked bar chart for band distribution
 /// Used for both timeline mode (multiple time points) and single-file stats mode (single bar)
@@ -27,8 +30,8 @@ pub fn render_stacked_chart(
         return Err("No data to render".to_string());
     }
 
-    // Build legend data (band labels only, no frequency)
-    let legend_data: Vec<String> = bands.iter().map(|b| b.label.to_string()).collect();
+    // Build legend data with frequency ranges (1-line format for legend)
+    let legend_data: Vec<String> = bands.iter().map(build_band_legend_label).collect();
 
     // For single-bar mode, hide x-axis labels
     let is_single_bar = data.time_labels.len() == 1;
@@ -49,7 +52,7 @@ pub fn render_stacked_chart(
                 .data(legend_data)
                 .bottom("3%")
                 .item_gap(16)
-                .text_style(TextStyle::new().color(COLOR_TEXT).font_size(18)),
+                .text_style(TextStyle::new().color(COLOR_TEXT).font_size(16)),
         )
         .grid(
             Grid::new()
@@ -114,8 +117,11 @@ pub fn render_stacked_chart(
         // Check if any value in this band exceeds threshold (to decide if we show labels)
         let has_significant_values = bar_data.iter().any(|&v| v >= LABEL_THRESHOLD);
 
+        // Use legend label (with frequency) as series name for legend matching
+        let series_name = build_band_legend_label(band);
+
         let mut bar = Bar::new()
-            .name(band.label)
+            .name(&series_name)
             .data(bar_data)
             .stack("total")
             .bar_width(bar_width)
@@ -138,7 +144,7 @@ pub fn render_stacked_chart(
     }
 
     // Render to PNG
-    let mut renderer = ImageRenderer::new(CHART_WIDTH, CHART_HEIGHT);
+    let mut renderer = ImageRenderer::new(CHART_WIDTH, STACKED_CHART_HEIGHT);
     renderer
         .save_format(ImageFormat::Png, &chart, output_path)
         .map_err(|e| format!("Failed to save chart: {}", e))?;

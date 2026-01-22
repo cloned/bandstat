@@ -48,7 +48,7 @@ pub(super) fn format_freq(hz: f32) -> String {
     }
 }
 
-/// Build band label with frequency range (2 lines)
+/// Build band label with frequency range (2 lines, for X-axis)
 pub(super) fn build_band_label(band: &Band) -> String {
     let freq_range = if band.high_hz == f32::MAX {
         format!("{}+", format_freq(band.low_hz))
@@ -56,4 +56,14 @@ pub(super) fn build_band_label(band: &Band) -> String {
         format!("{}-{}", format_freq(band.low_hz), format_freq(band.high_hz))
     };
     format!("{}\n{}", band.label, freq_range)
+}
+
+/// Build band label with frequency range (1 line, for legend)
+pub(super) fn build_band_legend_label(band: &Band) -> String {
+    let freq_range = if band.high_hz == f32::MAX {
+        format!("{}+", format_freq(band.low_hz))
+    } else {
+        format!("{}-{}", format_freq(band.low_hz), format_freq(band.high_hz))
+    };
+    format!("{} ({})", band.label, freq_range)
 }

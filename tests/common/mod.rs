@@ -75,9 +75,7 @@ pub fn generate_multitone(
         .map(|i| {
             freqs_and_amps
                 .iter()
-                .map(|(freq, amp)| {
-                    (2.0 * PI * freq * i as f32 / sample_rate as f32).sin() * amp
-                })
+                .map(|(freq, amp)| (2.0 * PI * freq * i as f32 / sample_rate as f32).sin() * amp)
                 .sum::<f32>()
                 * 0.5
         })
