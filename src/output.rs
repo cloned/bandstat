@@ -9,10 +9,6 @@ pub(crate) fn print_error(msg: &str) {
     eprintln!("{}: {}", "error".red().bold(), msg);
 }
 
-pub(crate) fn print_warning(msg: &str) {
-    eprintln!("{}: {}", "warning".yellow().bold(), msg);
-}
-
 pub(crate) fn print_percentages(powers: &[f64], bands: &[Band]) {
     let total: f64 = powers.iter().sum();
     if total > 0.0 {

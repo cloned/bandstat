@@ -9,6 +9,7 @@ license = "MIT"
 [dependencies]
 symphonia = { version = "0.5", features = ["aiff", "wav", "pcm", "mp3", "flac"] }
 rustfft = "6.2"
+rubato = "0.16"
 clap = { version = "4", features = ["derive"] }
 colored = "2"
 charming = { version = "0.4", features = ["ssr"] }

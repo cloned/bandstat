@@ -7,15 +7,15 @@ use clap::Parser;
 use rustfft::FftPlanner;
 
 use analysis::{
-    DYNAMICS_DISPLAY_THRESHOLD_PCT, FFT_SIZE, analyze_interval, analyze_stats, check_sample_rate,
+    DYNAMICS_DISPLAY_THRESHOLD_PCT, FFT_SIZE, analyze_interval, analyze_stats,
     create_hanning_window, create_k_weight_table, get_bands, powers_to_percentages,
 };
-use audio::load_audio;
+use audio::{TARGET_SAMPLE_RATE, load_audio};
 use output::{
     format_time, get_display_name, print_bands, print_diff_row, print_diff_row_masked_styled,
     print_diff_row_styled, print_error, print_file_info, print_header, print_legend,
     print_percentages, print_row, print_row_masked, print_row_masked_styled, print_row_styled,
-    print_separator, print_warning,
+    print_separator,
 };
 
 #[derive(Parser)]
@@ -64,7 +64,7 @@ struct Args {
 // Stats analysis result for a single file
 struct FileStats {
     name: String,
-    sample_rate: u32,
+    original_sample_rate: u32,
     channels: u16,
     raw_pct: Vec<f64>,
     k_pct: Vec<f64>,
@@ -79,16 +79,11 @@ fn analyze_file(filename: &str, bands: &[analysis::Band], show_progress: bool) -
         std::process::exit(1);
     });
 
-    // Show sample rate warning before progress display
-    if let Some(warning) = check_sample_rate(audio.sample_rate) {
-        print_warning(&warning);
-    }
-
     if show_progress {
         eprint!("Analyzing {}... 0%", display_name);
     }
 
-    let k_weights = create_k_weight_table(FFT_SIZE, audio.sample_rate);
+    let k_weights = create_k_weight_table(FFT_SIZE, TARGET_SAMPLE_RATE);
     let result = analyze_stats(&audio, bands, &k_weights, |progress| {
         if show_progress {
             eprint!("\rAnalyzing {}... {}%", display_name, progress);
@@ -101,7 +96,7 @@ fn analyze_file(filename: &str, bands: &[analysis::Band], show_progress: bool) -
 
     FileStats {
         name: display_name,
-        sample_rate: audio.sample_rate,
+        original_sample_rate: audio.original_sample_rate,
         channels: audio.channels,
         raw_pct: powers_to_percentages(&result.raw_powers),
         k_pct: powers_to_percentages(&result.k_powers),
@@ -117,7 +112,12 @@ fn run_stats(filename: &str, quiet: bool) {
     if !quiet {
         println!();
         println!("Stats Analysis");
-        print_file_info(&stats.name, stats.sample_rate, stats.channels, false);
+        print_file_info(
+            &stats.name,
+            stats.original_sample_rate,
+            stats.channels,
+            false,
+        );
         print_bands(&bands);
     }
 
@@ -157,15 +157,6 @@ fn run_compare(filenames: &[String], quiet: bool, image_path: Option<&str>) {
         .iter()
         .map(|f| analyze_file(f, &bands, !quiet))
         .collect();
-
-    // Warn if sample rates differ between files
-    let first_rate = stats[0].sample_rate;
-    let has_mismatch = stats.iter().skip(1).any(|s| s.sample_rate != first_rate);
-    if has_mismatch {
-        print_warning(
-            "Sample rates differ between files. For accurate comparison, use files with identical sample rates.",
-        );
-    }
 
     println!("Comparison (base: [A]):");
     for (i, s) in stats.iter().enumerate() {
@@ -268,19 +259,11 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
         std::process::exit(1);
     });
 
-    // Show sample rate warning before output (only if K-weighting is used)
-    if use_k_weighting
-        && !quiet
-        && let Some(warning) = check_sample_rate(audio.sample_rate)
-    {
-        print_warning(&warning);
-    }
-
     if !quiet {
         let display_name = get_display_name(filename);
         print_file_info(
             display_name,
-            audio.sample_rate,
+            audio.original_sample_rate,
             audio.channels,
             use_k_weighting,
         );
@@ -292,10 +275,10 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
         std::process::exit(1);
     }
 
-    let freq_per_bin = audio.sample_rate as f32 / FFT_SIZE as f32;
+    let freq_per_bin = TARGET_SAMPLE_RATE as f32 / FFT_SIZE as f32;
     let window = create_hanning_window(FFT_SIZE);
     let k_weights = if use_k_weighting {
-        Some(create_k_weight_table(FFT_SIZE, audio.sample_rate))
+        Some(create_k_weight_table(FFT_SIZE, TARGET_SAMPLE_RATE))
     } else {
         None
     };
@@ -303,8 +286,8 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(FFT_SIZE);
 
-    let samples_per_interval = (interval_secs * audio.sample_rate as f32) as usize;
-    let total_duration = audio.samples.len() as f32 / audio.sample_rate as f32;
+    let samples_per_interval = (interval_secs * TARGET_SAMPLE_RATE as f32) as usize;
+    let total_duration = audio.samples.len() as f32 / TARGET_SAMPLE_RATE as f32;
     let num_intervals = audio.samples.len().div_ceil(samples_per_interval);
 
     if num_intervals == 0 {
@@ -343,7 +326,7 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
             *total += power;
         }
 
-        let time_secs = interval_start as f32 / audio.sample_rate as f32;
+        let time_secs = interval_start as f32 / TARGET_SAMPLE_RATE as f32;
         print!("{}", format_time(time_secs));
         print_percentages(&band_powers, &bands);
         println!();
@@ -411,14 +394,12 @@ fn main() {
     // Validate image output path
     if let Some(ref path) = args.image {
         use std::path::Path;
-        if let Some(parent) = Path::new(path).parent() {
-            if !parent.as_os_str().is_empty() && !parent.exists() {
-                print_error(&format!(
-                    "Directory does not exist: {}",
-                    parent.display()
-                ));
-                std::process::exit(1);
-            }
+        if let Some(parent) = Path::new(path).parent()
+            && !parent.as_os_str().is_empty()
+            && !parent.exists()
+        {
+            print_error(&format!("Directory does not exist: {}", parent.display()));
+            std::process::exit(1);
         }
     }
 

@@ -63,11 +63,12 @@ bandstat takes two audio files and outputs the power distribution of each freque
 ## Features
 
 * 14 frequency bands from DC to AIR
-* K-weighting based on [ITU-R BS.1770-4](https://www.itu.int/rec/R-REC-BS.1770) (optimized for 44.1/48kHz)
+* K-weighting based on [ITU-R BS.1770-4](https://www.itu.int/rec/R-REC-BS.1770)
 * Per-band dynamics analysis
 * Compare up to 10 files
 * Timeline mode for tracking changes over time
 * PNG chart output for visual comparison
+* Automatic resampling to 48kHz for consistent analysis across different sample rates
 
 ## Installation
 

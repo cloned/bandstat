@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::audio::AudioData;
 
-pub(crate) const FFT_SIZE: usize = 4096;
+pub(crate) const FFT_SIZE: usize = 16384;
+pub(crate) const HOP_SIZE: usize = 2048;
 
 /// Minimum power threshold to avoid log(0) in dB calculations
 const MIN_POWER: f64 = 1e-20;
@@ -170,20 +171,6 @@ fn k_weight(freq: f64, sample_rate: f64) -> f64 {
     (pre_mag_sq * rlb_mag_sq).sqrt()
 }
 
-/// Check if the sample rate has optimized K-weighting coefficients.
-/// Returns a warning message if not.
-pub(crate) fn check_sample_rate(sample_rate: u32) -> Option<String> {
-    if matches!(sample_rate, 48000 | 44100) {
-        None
-    } else {
-        Some(format!(
-            "K-weighting coefficients are optimized for 48kHz/44.1kHz. \
-             Using approximate values for {}Hz.",
-            sample_rate
-        ))
-    }
-}
-
 pub(crate) fn create_k_weight_table(fft_size: usize, sample_rate: u32) -> Vec<f64> {
     let freq_per_bin = sample_rate as f64 / fft_size as f64;
     let sr = sample_rate as f64;
@@ -205,7 +192,6 @@ pub(crate) fn analyze_interval(
     k_weights: Option<&[f64]>,
 ) -> Vec<f64> {
     let nyquist_bin = FFT_SIZE / 2;
-    let hop_size = FFT_SIZE / 2;
     let mut band_powers = vec![0.0f64; bands.len()];
     let mut pos = 0;
 
@@ -235,7 +221,7 @@ pub(crate) fn analyze_interval(
             band_powers[band_idx] += power;
         }
 
-        pos += hop_size;
+        pos += HOP_SIZE;
     }
 
     band_powers
@@ -270,7 +256,6 @@ where
     let freq_per_bin = audio.sample_rate as f32 / FFT_SIZE as f32;
     let window = create_hanning_window(FFT_SIZE);
     let nyquist_bin = FFT_SIZE / 2;
-    let hop_size = FFT_SIZE / 2;
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(FFT_SIZE);
@@ -280,7 +265,7 @@ where
     let mut band_db_per_frame: Vec<Vec<f64>> = vec![Vec::new(); bands.len()];
 
     let total_frames = if audio.samples.len() >= FFT_SIZE {
-        (audio.samples.len() - FFT_SIZE) / hop_size + 1
+        (audio.samples.len() - FFT_SIZE) / HOP_SIZE + 1
     } else {
         0
     };
@@ -328,7 +313,7 @@ where
             }
         }
 
-        pos += hop_size;
+        pos += HOP_SIZE;
     }
 
     // Calculate dynamics (standard deviation of dB values)
