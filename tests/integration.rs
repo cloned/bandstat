@@ -408,8 +408,46 @@ fn test_quiet_mode_reduces_output() {
 }
 
 // =============================================================================
-// Frequency accuracy tests
+// Analysis accuracy tests
 // =============================================================================
+
+/// Helper to parse Raw(%) or K-wt(%) line values
+fn parse_percentage_line(stdout: &str, prefix: &str) -> Option<Vec<f64>> {
+    for line in stdout.lines() {
+        if line.starts_with(prefix) {
+            let values: Vec<f64> = line
+                .split_whitespace()
+                .skip(1)
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            if !values.is_empty() {
+                return Some(values);
+            }
+        }
+    }
+    None
+}
+
+/// Helper to parse Dyn(dB) line values (may contain "-" for masked values)
+fn parse_dynamics_line(stdout: &str) -> Option<Vec<Option<f64>>> {
+    for line in stdout.lines() {
+        if line.starts_with("Dyn(dB)") {
+            let values: Vec<Option<f64>> = line
+                .split_whitespace()
+                .skip(1)
+                .map(|s| if s == "-" { None } else { s.parse().ok() })
+                .collect();
+            if !values.is_empty() {
+                return Some(values);
+            }
+        }
+    }
+    None
+}
+
+// Band indices (0-indexed):
+// 0:DC, 1:SUB1, 2:SUB2, 3:BASS, 4:UBAS, 5:LMID, 6:MID, 7:UMID, 8:HMID,
+// 9:PRES, 10:BRIL, 11:HIGH, 12:UHIG, 13:AIR
 
 #[test]
 fn test_750hz_sine_in_mid_band() {
@@ -421,30 +459,14 @@ fn test_750hz_sine_in_mid_band() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let values = parse_percentage_line(&stdout, "Raw(%)").expect("Should have Raw(%) line");
 
-    // Parse the Raw(%) line to verify MID band has significant power
-    // The output format is: "Raw(%)   0.0   0.0   0.0   0.0  ..."
-    // MID band (500-1000 Hz) should have the dominant power
-    for line in stdout.lines() {
-        if line.starts_with("Raw(%)") {
-            let values: Vec<f64> = line
-                .split_whitespace()
-                .skip(1) // Skip "Raw(%)"
-                .filter_map(|s| s.parse().ok())
-                .collect();
-
-            // MID band is index 6 (0-indexed: DC, SUB1, SUB2, BASS, UBAS, LMID, MID)
-            if values.len() >= 7 {
-                let mid_power = values[6];
-                assert!(
-                    mid_power > 50.0,
-                    "750Hz sine should have >50% power in MID band, got {}%",
-                    mid_power
-                );
-            }
-            break;
-        }
-    }
+    // MID band is index 6
+    assert!(
+        values[6] > 90.0,
+        "750Hz sine should have >90% power in MID band, got {}%",
+        values[6]
+    );
 }
 
 #[test]
@@ -457,25 +479,318 @@ fn test_100hz_sine_in_bass_band() {
     assert!(output.status.success());
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let values = parse_percentage_line(&stdout, "Raw(%)").expect("Should have Raw(%) line");
 
+    // BASS band is index 3
+    assert!(
+        values[3] > 90.0,
+        "100Hz sine should have >90% power in BASS band, got {}%",
+        values[3]
+    );
+}
+
+#[test]
+fn test_5khz_sine_in_pres_band() {
+    let temp_dir = TempDir::new().unwrap();
+    // 5000 Hz should be in the PRES band (4000-6000 Hz)
+    let wav_path = create_test_wav(&temp_dir, "5khz", 5000.0, 2.0);
+
+    let output = run_bandstat(&["-q", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let values = parse_percentage_line(&stdout, "Raw(%)").expect("Should have Raw(%) line");
+
+    // PRES band is index 9
+    assert!(
+        values[9] > 90.0,
+        "5kHz sine should have >90% power in PRES band, got {}%",
+        values[9]
+    );
+}
+
+#[test]
+fn test_multitone_power_distribution() {
+    let temp_dir = TempDir::new().unwrap();
+    // Equal amplitude tones at 100Hz (BASS) and 1500Hz (UMID)
+    let samples = common::generate_multitone(&[(100.0, 0.5), (1500.0, 0.5)], 48000, 2.0);
+    let wav_path = temp_dir.path().join("multitone.wav");
+    common::write_wav(&wav_path, &samples, 48000).unwrap();
+
+    let output = run_bandstat(&["-q", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let values = parse_percentage_line(&stdout, "Raw(%)").expect("Should have Raw(%) line");
+
+    // Both BASS (index 3) and UMID (index 7) should have significant power
+    // Since equal amplitude, they should be roughly equal (within 20% of each other)
+    let bass = values[3];
+    let umid = values[7];
+    assert!(
+        bass > 30.0 && umid > 30.0,
+        "Both bands should have >30% power: BASS={}%, UMID={}%",
+        bass,
+        umid
+    );
+    assert!(
+        (bass - umid).abs() < 20.0,
+        "Power should be roughly equal: BASS={}%, UMID={}%",
+        bass,
+        umid
+    );
+}
+
+#[test]
+fn test_percentages_sum_to_100() {
+    let temp_dir = TempDir::new().unwrap();
+    let wav_path = create_noise_wav(&temp_dir, "noise", 2.0);
+
+    let output = run_bandstat(&["-q", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let raw_values = parse_percentage_line(&stdout, "Raw(%)").expect("Should have Raw(%) line");
+    let kwt_values = parse_percentage_line(&stdout, "K-wt(%)").expect("Should have K-wt(%) line");
+
+    let raw_sum: f64 = raw_values.iter().sum();
+    let kwt_sum: f64 = kwt_values.iter().sum();
+
+    // Allow 0.2% tolerance due to rounding in display
+    assert!(
+        (raw_sum - 100.0).abs() < 0.2,
+        "Raw percentages should sum to 100%, got {}%",
+        raw_sum
+    );
+    assert!(
+        (kwt_sum - 100.0).abs() < 0.2,
+        "K-wt percentages should sum to 100%, got {}%",
+        kwt_sum
+    );
+}
+
+#[test]
+fn test_k_weighting_reduces_low_freq() {
+    let temp_dir = TempDir::new().unwrap();
+    // Mix of 100 Hz and 2000 Hz - K-weighting should shift balance
+    let samples = common::generate_multitone(&[(100.0, 0.5), (2000.0, 0.5)], 48000, 2.0);
+    let wav_path = temp_dir.path().join("low_high_mix.wav");
+    common::write_wav(&wav_path, &samples, 48000).unwrap();
+
+    let output = run_bandstat(&["-q", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let raw_values = parse_percentage_line(&stdout, "Raw(%)").expect("Should have Raw(%) line");
+    let kwt_values = parse_percentage_line(&stdout, "K-wt(%)").expect("Should have K-wt(%) line");
+
+    // BASS band (index 3) should have lower K-wt% than Raw%
+    // K-weighting attenuates low frequencies relative to mid/high
+    assert!(
+        kwt_values[3] < raw_values[3],
+        "K-weighting should reduce BASS power: Raw={}%, K-wt={}%",
+        raw_values[3],
+        kwt_values[3]
+    );
+
+    // UMID band (index 7) should have higher K-wt% than Raw%
+    assert!(
+        kwt_values[7] > raw_values[7],
+        "K-weighting should boost UMID power: Raw={}%, K-wt={}%",
+        raw_values[7],
+        kwt_values[7]
+    );
+}
+
+#[test]
+fn test_k_weighting_boosts_presence() {
+    let temp_dir = TempDir::new().unwrap();
+    // Broadband noise - K-weighting should shift balance toward higher frequencies
+    let wav_path = create_noise_wav(&temp_dir, "noise", 2.0);
+
+    let output = run_bandstat(&["-q", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let raw_values = parse_percentage_line(&stdout, "Raw(%)").expect("Should have Raw(%) line");
+    let kwt_values = parse_percentage_line(&stdout, "K-wt(%)").expect("Should have K-wt(%) line");
+
+    // Sum of low bands (DC through UBAS, indices 0-4)
+    let raw_low: f64 = raw_values[0..5].iter().sum();
+    let kwt_low: f64 = kwt_values[0..5].iter().sum();
+
+    // K-weighting should reduce low frequency content
+    assert!(
+        kwt_low < raw_low,
+        "K-weighting should reduce low freq sum: Raw={}%, K-wt={}%",
+        raw_low,
+        kwt_low
+    );
+}
+
+#[test]
+fn test_dynamics_constant_amplitude_low() {
+    let temp_dir = TempDir::new().unwrap();
+    // Constant amplitude sine wave should have very low dynamics
+    let wav_path = create_test_wav(&temp_dir, "constant", 1000.0, 3.0);
+
+    let output = run_bandstat(&["-q", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let dyn_values = parse_dynamics_line(&stdout).expect("Should have Dyn(dB) line");
+
+    // MID band (index 6) should have low dynamics for constant amplitude
+    if let Some(mid_dyn) = dyn_values[6] {
+        assert!(
+            mid_dyn < 1.0,
+            "Constant amplitude should have dynamics < 1.0 dB, got {} dB",
+            mid_dyn
+        );
+    }
+}
+
+#[test]
+fn test_dynamics_varying_amplitude_higher() {
+    let temp_dir = TempDir::new().unwrap();
+    // Create a signal with varying amplitude (fade in/out pattern)
+    let samples = common::generate_sine_with_envelope(1000.0, 48000, 4.0, |t| {
+        // Pulsing envelope: amplitude varies from 0.2 to 1.0 several times
+        let cycles = 4.0;
+        0.2 + 0.8 * ((t * cycles * 2.0 * std::f32::consts::PI).sin() * 0.5 + 0.5)
+    });
+    let wav_path = temp_dir.path().join("varying.wav");
+    common::write_wav(&wav_path, &samples, 48000).unwrap();
+
+    let output = run_bandstat(&["-q", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let dyn_values = parse_dynamics_line(&stdout).expect("Should have Dyn(dB) line");
+
+    // MID band (index 6) should have higher dynamics for varying amplitude
+    if let Some(mid_dyn) = dyn_values[6] {
+        assert!(
+            mid_dyn > 1.0,
+            "Varying amplitude should have dynamics > 1.0 dB, got {} dB",
+            mid_dyn
+        );
+    }
+}
+
+#[test]
+fn test_comparison_diff_calculation() {
+    let temp_dir = TempDir::new().unwrap();
+    // File A: 100Hz (BASS dominant, index 3)
+    // File B: 750Hz (MID dominant, index 6)
+    let wav_a = create_test_wav(&temp_dir, "bass", 100.0, 2.0);
+    let wav_b = create_test_wav(&temp_dir, "mid", 750.0, 2.0);
+
+    let output = run_bandstat(&["-q", wav_a.to_str().unwrap(), wav_b.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Find B-A Raw line and check that BASS decreased, MID increased
+    let mut found_diff = false;
     for line in stdout.lines() {
-        if line.starts_with("Raw(%)") {
+        if line.contains("B-A") && line.contains("Raw") {
+            found_diff = true;
             let values: Vec<f64> = line
                 .split_whitespace()
-                .skip(1)
                 .filter_map(|s| s.parse().ok())
                 .collect();
 
-            // BASS band is index 3 (DC, SUB1, SUB2, BASS)
-            if values.len() >= 4 {
-                let bass_power = values[3];
+            if values.len() >= 7 {
+                // BASS (index 3) should be very negative (B has ~0% bass, A has ~100%)
                 assert!(
-                    bass_power > 50.0,
-                    "100Hz sine should have >50% power in BASS band, got {}%",
-                    bass_power
+                    values[3] < -80.0,
+                    "B-A BASS diff should be < -80: got {}",
+                    values[3]
+                );
+                // MID (index 6) should be very positive (B has ~100% mid, A has ~0%)
+                assert!(
+                    values[6] > 80.0,
+                    "B-A MID diff should be > 80: got {}",
+                    values[6]
                 );
             }
             break;
         }
     }
+    assert!(found_diff, "Should find B-A Raw diff line");
+}
+
+#[test]
+fn test_timeline_tracks_frequency_change() {
+    let temp_dir = TempDir::new().unwrap();
+    // Create audio that changes frequency halfway through
+    // First half: 100Hz, Second half: 3000Hz
+    let sr = 48000u32;
+    let duration = 10.0f32; // 10 seconds total
+    let half_samples = (sr as f32 * duration / 2.0) as usize;
+
+    let mut samples = Vec::with_capacity((sr as f32 * duration) as usize);
+
+    // First half: 100Hz (BASS band)
+    for i in 0..half_samples {
+        let t = i as f32 / sr as f32;
+        samples.push((2.0 * std::f32::consts::PI * 100.0 * t).sin() * 0.5);
+    }
+    // Second half: 3000Hz (HMID band)
+    for i in 0..half_samples {
+        let t = i as f32 / sr as f32;
+        samples.push((2.0 * std::f32::consts::PI * 3000.0 * t).sin() * 0.5);
+    }
+
+    let wav_path = temp_dir.path().join("freq_change.wav");
+    common::write_wav(&wav_path, &samples, sr).unwrap();
+
+    // Use 5 second intervals
+    let output = run_bandstat(&["-q", "-t", "-i", "5", wav_path.to_str().unwrap()]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should have 00:00 (bass) and 00:05 (hmid) intervals
+    let mut found_00_00 = false;
+    let mut found_00_05 = false;
+
+    for line in stdout.lines() {
+        if line.starts_with("00:00") {
+            found_00_00 = true;
+            // First interval should have BASS (index 3) dominant
+            let values: Vec<f64> = line
+                .split_whitespace()
+                .skip(1)
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            if values.len() >= 4 {
+                assert!(
+                    values[3] > 80.0,
+                    "First interval should be BASS dominant: {}%",
+                    values[3]
+                );
+            }
+        }
+        if line.starts_with("00:05") {
+            found_00_05 = true;
+            // Second interval should have HMID (index 8) dominant
+            let values: Vec<f64> = line
+                .split_whitespace()
+                .skip(1)
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            if values.len() >= 9 {
+                assert!(
+                    values[8] > 80.0,
+                    "Second interval should be HMID dominant: {}%",
+                    values[8]
+                );
+            }
+        }
+    }
+
+    assert!(found_00_00, "Should have 00:00 interval");
+    assert!(found_00_05, "Should have 00:05 interval");
 }

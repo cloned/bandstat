@@ -63,7 +63,12 @@ pub(crate) fn load_audio(filename: &str) -> Result<AudioData, String> {
         .map_err(|e| format!("{}: failed to create decoder ({})", filename, e))?;
 
     let track_id = track.id;
-    let mut samples: Vec<f32> = Vec::new();
+    let estimated_samples = track
+        .codec_params
+        .n_frames
+        .map(|n| n as usize)
+        .unwrap_or(sample_rate as usize * 60); // Default: 1 minute estimate
+    let mut samples: Vec<f32> = Vec::with_capacity(estimated_samples);
 
     loop {
         let packet = match format.next_packet() {

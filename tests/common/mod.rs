@@ -47,6 +47,43 @@ impl SimpleRng {
     }
 }
 
+/// Generate a sine wave with amplitude envelope (for dynamics testing)
+pub fn generate_sine_with_envelope(
+    freq: f32,
+    sample_rate: u32,
+    duration_secs: f32,
+    amplitude_func: impl Fn(f32) -> f32, // time (0-1) -> amplitude (0-1)
+) -> Vec<f32> {
+    let num_samples = (sample_rate as f32 * duration_secs) as usize;
+    (0..num_samples)
+        .map(|i| {
+            let t = i as f32 / num_samples as f32;
+            let amp = amplitude_func(t);
+            (2.0 * PI * freq * i as f32 / sample_rate as f32).sin() * 0.5 * amp
+        })
+        .collect()
+}
+
+/// Generate multi-tone signal (sum of multiple frequencies)
+pub fn generate_multitone(
+    freqs_and_amps: &[(f32, f32)], // (frequency, amplitude)
+    sample_rate: u32,
+    duration_secs: f32,
+) -> Vec<f32> {
+    let num_samples = (sample_rate as f32 * duration_secs) as usize;
+    (0..num_samples)
+        .map(|i| {
+            freqs_and_amps
+                .iter()
+                .map(|(freq, amp)| {
+                    (2.0 * PI * freq * i as f32 / sample_rate as f32).sin() * amp
+                })
+                .sum::<f32>()
+                * 0.5
+        })
+        .collect()
+}
+
 /// Write samples as a WAV file to the given path
 pub fn write_wav(path: &Path, samples: &[f32], sample_rate: u32) -> std::io::Result<()> {
     let mut file = std::fs::File::create(path)?;

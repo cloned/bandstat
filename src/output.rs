@@ -1,5 +1,6 @@
-use crate::analysis::Band;
 use colored::*;
+
+use crate::analysis::Band;
 
 fn style_label(label: &str) -> ColoredString {
     label.bold()
@@ -9,14 +10,14 @@ pub(crate) fn print_error(msg: &str) {
     eprintln!("{}: {}", "error".red().bold(), msg);
 }
 
-pub(crate) fn print_percentages(powers: &[f64], bands: &[Band]) {
+pub(crate) fn print_percentages(powers: &[f64]) {
     let total: f64 = powers.iter().sum();
     if total > 0.0 {
         for power in powers {
             print!(" {:>5.1}", (power / total) * 100.0);
         }
     } else {
-        for _ in bands {
+        for _ in powers {
             print!("     -");
         }
     }
