@@ -13,3 +13,6 @@ rubato = "0.16"
 clap = { version = "4", features = ["derive"] }
 colored = "2"
 charming = { version = "0.4", features = ["ssr"] }
+
+[dev-dependencies]
+tempfile = "3.24.0"

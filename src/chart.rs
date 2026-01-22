@@ -21,6 +21,14 @@ pub struct FileChartData {
     pub k_pct: Vec<f64>,
 }
 
+/// Data for timeline chart
+pub struct TimelineChartData {
+    pub filename: String,
+    pub time_labels: Vec<String>,
+    /// Band percentages: band_percentages[band_idx][time_idx]
+    pub band_percentages: Vec<Vec<f64>>,
+}
+
 /// Chart dimensions (2x for Retina quality)
 const CHART_WIDTH: u32 = 2800;
 const CHART_HEIGHT: u32 = 1200;
@@ -49,6 +57,27 @@ const COLOR_C_LINE: &str = "#78FFB4"; // Light green for K-wt line
 const COLOR_D_TOP: &str = "#A478FF"; // Purple
 const COLOR_D_BOTTOM: &str = "#7840F8"; // Vivid purple
 const COLOR_D_LINE: &str = "#C4A4FF"; // Light purple for K-wt line
+
+// Timeline chart band colors (14 bands, grouped by frequency range)
+// Low bands (DC, SUB1, SUB2, BASS, UBAS): Blue gradient
+// Mid bands (LMID, MID, UMID, HMID): Green-Yellow gradient
+// High bands (PRES, BRIL, HIGH, UHIG, AIR): Orange-Red gradient
+const TIMELINE_BAND_COLORS: [&str; 14] = [
+    "#1E3A5F", // DC - Dark blue
+    "#2858A0", // SUB1 - Blue
+    "#3878C0", // SUB2 - Medium blue
+    "#4898E0", // BASS - Light blue
+    "#58B8F0", // UBAS - Cyan-blue
+    "#48C878", // LMID - Green
+    "#78D848", // MID - Yellow-green
+    "#B8E818", // UMID - Yellow
+    "#E8D800", // HMID - Gold
+    "#F8A800", // PRES - Orange
+    "#F87800", // BRIL - Dark orange
+    "#E84800", // HIGH - Red-orange
+    "#C82828", // UHIG - Red
+    "#982060", // AIR - Magenta
+];
 
 /// Format frequency for display (e.g., 1000 -> "1k", 500 -> "500")
 fn format_freq(hz: f32) -> String {
@@ -235,6 +264,139 @@ pub fn render_comparison_chart(
                         .formatter("{c}"),
                 ),
         );
+    }
+
+    // Render to PNG
+    let mut renderer = ImageRenderer::new(CHART_WIDTH, CHART_HEIGHT);
+    renderer
+        .save_format(ImageFormat::Png, &chart, output_path)
+        .map_err(|e| format!("Failed to save chart: {}", e))?;
+
+    Ok(())
+}
+
+/// Render a stacked bar chart for band distribution
+/// Used for both timeline mode (multiple time points) and single-file stats mode (single bar)
+pub fn render_stacked_chart(
+    data: &TimelineChartData,
+    bands: &[Band],
+    title: &str,
+    output_path: &str,
+) -> Result<(), String> {
+    if data.time_labels.is_empty() {
+        return Err("No data to render".to_string());
+    }
+
+    let title_text = title;
+
+    // Build legend data (band labels only, no frequency)
+    let legend_data: Vec<String> = bands.iter().map(|b| b.label.to_string()).collect();
+
+    // For single-bar mode, hide x-axis labels
+    let is_single_bar = data.time_labels.len() == 1;
+
+    let mut chart = Chart::new()
+        .background_color(Color::Value(COLOR_BACKGROUND.to_string()))
+        .title(
+            Title::new()
+                .text(title_text)
+                .subtext(&data.filename)
+                .left("center")
+                .top("3%")
+                .text_style(TextStyle::new().color(COLOR_TEXT).font_size(36))
+                .subtext_style(TextStyle::new().color(COLOR_TEXT).font_size(24)),
+        )
+        .legend(
+            Legend::new()
+                .data(legend_data)
+                .bottom("3%")
+                .item_gap(16)
+                .text_style(TextStyle::new().color(COLOR_TEXT).font_size(18)),
+        )
+        .grid(
+            Grid::new()
+                .left("5%")
+                .right("3%")
+                .bottom("10%")
+                .top("15%")
+                .contain_label(true),
+        )
+        .y_axis(
+            Axis::new()
+                .type_(AxisType::Value)
+                .name("%")
+                .max(100)
+                .name_text_style(TextStyle::new().color(COLOR_TEXT).font_size(24))
+                .axis_label(AxisLabel::new().color(COLOR_TEXT).font_size(20))
+                .split_line(
+                    SplitLine::new().line_style(LineStyle::new().width(0.5).color(COLOR_GRID)),
+                ),
+        );
+
+    // For single-bar mode, hide x-axis labels; otherwise show time labels
+    let x_axis = Axis::new()
+        .type_(AxisType::Category)
+        .boundary_gap(true)
+        .data(data.time_labels.clone());
+
+    chart = chart.x_axis(if is_single_bar {
+        x_axis.axis_label(AxisLabel::new().show(false))
+    } else {
+        x_axis.axis_label(AxisLabel::new().color(COLOR_TEXT).font_size(20))
+    });
+
+    // Calculate bar width based on grid and number of intervals
+    // Grid width is ~92% of chart (5% left + 3% right margins)
+    let grid_width = (CHART_WIDTH as f64) * 0.92;
+    let num_intervals = data.time_labels.len().max(1) as f64;
+    // For single bar, limit width to 1/3 of grid; otherwise fill grid
+    let bar_width = if is_single_bar {
+        grid_width / 3.0
+    } else {
+        grid_width / num_intervals
+    };
+
+    // Threshold for showing labels (percentage must be at least this value)
+    const LABEL_THRESHOLD: f64 = 5.0;
+    // Larger font for single bar mode
+    let label_font_size = if is_single_bar { 18.0 } else { 14.0 };
+
+    // Add stacked bar series for each band (low frequencies at bottom, high at top)
+    for (band_idx, band) in bands.iter().enumerate() {
+        let color = TIMELINE_BAND_COLORS
+            .get(band_idx)
+            .unwrap_or(&TIMELINE_BAND_COLORS[0]);
+
+        let bar_data: Vec<f64> = data
+            .band_percentages
+            .get(band_idx)
+            .map(|v| v.iter().map(|x| (x * 10.0).round() / 10.0).collect())
+            .unwrap_or_default();
+
+        // Check if any value in this band exceeds threshold (to decide if we show labels)
+        let has_significant_values = bar_data.iter().any(|&v| v >= LABEL_THRESHOLD);
+
+        let mut bar = Bar::new()
+            .name(band.label)
+            .data(bar_data)
+            .stack("total")
+            .bar_width(bar_width)
+            .item_style(ItemStyle::new().color(*color));
+
+        // Only add labels for bands that have significant values
+        if has_significant_values {
+            bar = bar.label(
+                Label::new()
+                    .show(true)
+                    .position(LabelPosition::Inside)
+                    .color(COLOR_TEXT)
+                    .font_size(label_font_size)
+                    .font_weight("bold")
+                    .formatter("{c}"),
+            );
+        }
+
+        chart = chart.series(bar);
     }
 
     // Render to PNG

@@ -52,6 +52,10 @@ TIME      DC  SUB1  SUB2  BASS  UBAS  LMID   MID  UMID  HMID  PRES  BRIL  HIGH  
 AVG      0.0   0.1   9.1  18.0  21.1  12.2  12.3  10.4  11.6   3.3   1.5   0.3   0.0   0.0
 ```
 
+Use `--image` to visualize band distribution over time as a stacked bar chart:
+
+![Timeline chart](docs/time.png)
+
 Useful when the track's overall average doesn't reflect section-by-section reality. For example, a track with a sparse-mid intro and a bass-heavy chorus.
 
 ## Why bandstat?
@@ -89,12 +93,13 @@ bandstat takes two audio files and outputs the power distribution of each freque
 
 ```
 bandstat audio.wav                                   # Single file analysis
+bandstat audio.wav --image chart.png                 # Single file with chart output
+bandstat audio.wav --image chart.png -w              # Chart with K-weighting
 bandstat my_mix.wav ref.wav                          # Compare files (first = base)
-bandstat a.wav b.wav --image chart.png               # Output comparison chart
+bandstat a.wav b.wav --image chart.png               # Comparison chart output
 bandstat --time audio.wav                            # Timeline analysis
-bandstat --time --interval 10 --weighted audio.wav   # 10s intervals, K-weighted
-bandstat --quiet audio.wav                           # Quiet mode
-bandstat --no-color audio.wav                        # Disable colored output
+bandstat --time --image chart.png audio.wav          # Timeline chart output
+bandstat --time -i 10 -w audio.wav                   # 10s intervals, K-weighted
 ```
 
 ### Options
@@ -103,18 +108,22 @@ bandstat --no-color audio.wav                        # Disable colored output
 |--------|-------|-------------|
 | `--time` | `-t` | Timeline analysis mode |
 | `--interval <SECONDS>` | `-i` | Timeline interval (default: 20) |
-| `--weighted` | `-w` | Apply K-weighting to timeline |
+| `--weighted` | `-w` | Use K-weighted values for chart output |
 | `--quiet` | `-q` | Suppress explanations |
 | `--no-color` | | Disable colored output |
-| `--image <PATH>` | | Output comparison chart as PNG (2-4 files) |
+| `--image <PATH>` | | Output chart as PNG |
 
 ### Chart output
 
-Use `--image` to generate a visual comparison chart. Supports up to 4 files:
+Use `--image` to generate PNG charts:
+
+- **Single file**: Stacked bar chart of band distribution (use `-w` for K-weighted)
+- **Comparison (2-4 files)**: Bar chart with K-weighted overlay lines
+- **Timeline**: Stacked bar chart showing band distribution over time
 
 ![Comparison chart with 4 files](docs/comparison_4files.png)
 
-The chart shows Raw power distribution as bars and K-weighted values as lines.
+Comparison mode shows Raw power distribution as bars and K-weighted values as lines.
 
 ### Output columns
 

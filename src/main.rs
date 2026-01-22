@@ -25,11 +25,13 @@ use output::{
     about = "Audio frequency band analyzer with K-weighting and dynamics analysis",
     after_help = "Examples:
   bandstat audio.wav                                   Single file analysis
+  bandstat audio.wav --image chart.png                 Single file with chart output
+  bandstat audio.wav --image chart.png -w              Chart with K-weighting
   bandstat my_mix.wav ref.wav                          Compare files (first is base)
-  bandstat a.wav b.wav --image chart.png               Output comparison chart
+  bandstat a.wav b.wav --image chart.png               Comparison chart output
   bandstat --time audio.wav                            Timeline analysis
-  bandstat --time --interval 10 --weighted audio.wav   10s intervals, K-weighted
-  bandstat --no-color audio.wav                        Disable colored output"
+  bandstat --time --image chart.png audio.wav          Timeline chart output
+  bandstat --time -i 10 -w audio.wav                   10s intervals, K-weighted"
 )]
 struct Args {
     /// Audio files to analyze (WAV, AIFF, MP3, FLAC). Up to 10 files for comparison.
@@ -44,7 +46,7 @@ struct Args {
     #[arg(short, long, default_value = "20", value_name = "SECONDS")]
     interval: f32,
 
-    /// Apply K-weighting to timeline analysis
+    /// Use K-weighted values for analysis/chart output
     #[arg(short, long)]
     weighted: bool,
 
@@ -56,7 +58,7 @@ struct Args {
     #[arg(long)]
     no_color: bool,
 
-    /// Output comparison chart as PNG image (comparison mode only)
+    /// Output chart as PNG image
     #[arg(long, value_name = "PATH")]
     image: Option<String>,
 }
@@ -105,7 +107,7 @@ fn analyze_file(filename: &str, bands: &[analysis::Band], show_progress: bool) -
 }
 
 // Mode: Single file stats analysis
-fn run_stats(filename: &str, quiet: bool) {
+fn run_stats(filename: &str, use_k_weighting: bool, quiet: bool, image_path: Option<&str>) {
     let bands = get_bands();
     let stats = analyze_file(filename, &bands, !quiet);
 
@@ -116,7 +118,7 @@ fn run_stats(filename: &str, quiet: bool) {
             &stats.name,
             stats.original_sample_rate,
             stats.channels,
-            false,
+            use_k_weighting,
         );
         print_bands(&bands);
     }
@@ -143,6 +145,33 @@ fn run_stats(filename: &str, quiet: bool) {
     if !quiet {
         println!();
         print_legend();
+    }
+
+    // Output chart if requested
+    if let Some(path) = image_path {
+        let pct_data = if use_k_weighting {
+            &stats.k_pct
+        } else {
+            &stats.raw_pct
+        };
+
+        let chart_data = chart::TimelineChartData {
+            filename: stats.name,
+            time_labels: vec!["".to_string()], // Single bar, no label
+            band_percentages: pct_data.iter().map(|&v| vec![v]).collect(),
+        };
+
+        let title = if use_k_weighting {
+            "Band Distribution (K-weighted)"
+        } else {
+            "Band Distribution"
+        };
+
+        if let Err(e) = chart::render_stacked_chart(&chart_data, &bands, title, path) {
+            print_error(&e);
+        } else {
+            eprintln!("Chart saved to: {}", path);
+        }
     }
 }
 
@@ -251,8 +280,15 @@ fn run_compare(filenames: &[String], quiet: bool, image_path: Option<&str>) {
 }
 
 // Mode: Timeline analysis (band distribution over time)
-fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet: bool) {
+fn run_timeline(
+    filename: &str,
+    use_k_weighting: bool,
+    interval_secs: f32,
+    quiet: bool,
+    image_path: Option<&str>,
+) {
     let bands = get_bands();
+    let display_name = get_display_name(filename).to_string();
 
     let audio = load_audio(filename).unwrap_or_else(|e| {
         print_error(&e.to_string());
@@ -260,9 +296,8 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
     });
 
     if !quiet {
-        let display_name = get_display_name(filename);
         print_file_info(
-            display_name,
+            &display_name,
             audio.original_sample_rate,
             audio.channels,
             use_k_weighting,
@@ -300,6 +335,10 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
 
     let mut total_band_powers = vec![0.0f64; bands.len()];
 
+    // For chart: collect percentages per band per interval
+    let mut chart_time_labels: Vec<String> = Vec::new();
+    let mut chart_band_pcts: Vec<Vec<f64>> = vec![Vec::new(); bands.len()];
+
     for interval_idx in 0..num_intervals {
         let interval_start = interval_idx * samples_per_interval;
         let interval_end = ((interval_idx + 1) * samples_per_interval).min(audio.samples.len());
@@ -328,8 +367,27 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
 
         let time_secs = interval_start as f32 / TARGET_SAMPLE_RATE as f32;
         print!("{}", format_time(time_secs));
-        print_percentages(&band_powers, &bands);
+
+        // Convert to percentages for display and chart
+        let percentages = powers_to_percentages(&band_powers);
+        for (pct, band) in percentages.iter().zip(&bands) {
+            let formatted = if *pct < 0.05 {
+                "   0.0".to_string()
+            } else {
+                format!("{:>6.1}", pct)
+            };
+            let width = band.label.len().max(4);
+            print!("{:>width$}", formatted, width = width + 2);
+        }
         println!();
+
+        // Store for chart
+        if image_path.is_some() {
+            chart_time_labels.push(format_time(time_secs).trim().to_string());
+            for (band_idx, pct) in percentages.iter().enumerate() {
+                chart_band_pcts[band_idx].push(*pct);
+            }
+        }
     }
 
     print_separator(&bands, 6);
@@ -340,6 +398,27 @@ fn run_timeline(filename: &str, use_k_weighting: bool, interval_secs: f32, quiet
 
     println!();
     println!("Duration: {}", format_time(total_duration));
+
+    // Output chart if requested
+    if let Some(path) = image_path {
+        let chart_data = chart::TimelineChartData {
+            filename: display_name,
+            time_labels: chart_time_labels,
+            band_percentages: chart_band_pcts,
+        };
+
+        let title = if use_k_weighting {
+            "Band Distribution Over Time (K-weighted)"
+        } else {
+            "Band Distribution Over Time"
+        };
+
+        if let Err(e) = chart::render_stacked_chart(&chart_data, &bands, title, path) {
+            print_error(&e);
+        } else {
+            eprintln!("Chart saved to: {}", path);
+        }
+    }
 }
 
 fn main() {
@@ -368,9 +447,17 @@ fn main() {
         std::process::exit(1);
     }
 
-    if !args.time && args.weighted {
-        print_error("--weighted can only be used with --time");
+    if args.files.len() >= 2 && args.weighted {
+        print_error("--weighted cannot be used with comparison mode");
         std::process::exit(1);
+    }
+
+    if args.weighted && args.image.is_none() && !args.time {
+        use colored::*;
+        eprintln!(
+            "{} --weighted has no effect without --image in single-file mode",
+            "Warning:".yellow()
+        );
     }
 
     if !args.time && args.interval != 20.0 {
@@ -378,12 +465,8 @@ fn main() {
         std::process::exit(1);
     }
 
-    if args.image.is_some() && args.files.len() < 2 {
-        print_error("--image can only be used with comparison mode (2+ files)");
-        std::process::exit(1);
-    }
-
-    if args.image.is_some() && args.files.len() > chart::max_chart_files() {
+    if args.image.is_some() && args.files.len() >= 2 && args.files.len() > chart::max_chart_files()
+    {
         print_error(&format!(
             "--image supports up to {} files",
             chart::max_chart_files()
@@ -407,8 +490,19 @@ fn main() {
     if args.files.len() >= 2 {
         run_compare(&args.files, args.quiet, args.image.as_deref());
     } else if args.time {
-        run_timeline(&args.files[0], args.weighted, args.interval, args.quiet);
+        run_timeline(
+            &args.files[0],
+            args.weighted,
+            args.interval,
+            args.quiet,
+            args.image.as_deref(),
+        );
     } else {
-        run_stats(&args.files[0], args.quiet);
+        run_stats(
+            &args.files[0],
+            args.weighted,
+            args.quiet,
+            args.image.as_deref(),
+        );
     }
 }

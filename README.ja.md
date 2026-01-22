@@ -50,6 +50,10 @@ TIME      DC  SUB1  SUB2  BASS  UBAS  LMID   MID  UMID  HMID  PRES  BRIL  HIGH  
 AVG      0.0   0.1   9.1  18.0  21.1  12.2  12.3  10.4  11.6   3.3   1.5   0.3   0.0   0.0
 ```
 
+`--image` で帯域分布の時間変化を積み上げ棒グラフで可視化できます。
+
+![タイムライングラフ](docs/time.png)
+
 曲全体の平均値がセクションごとの実態を反映しない場合に有用です。例えばミッドが薄いイントロと低域が厚いサビが混在するような曲で、各パートの帯域バランスを個別に確認できます。
 
 ## なぜ bandstat?
@@ -87,12 +91,13 @@ bandstat は2つの音源から各帯域のパワー分布をパーセンテー�
 
 ```
 bandstat audio.wav                                   # 単一ファイル分析
+bandstat audio.wav --image chart.png                 # 単一ファイルのグラフ出力
+bandstat audio.wav --image chart.png -w              # K-weighted でグラフ出力
 bandstat my_mix.wav ref.wav                          # ファイル比較（最初が基準）
 bandstat a.wav b.wav --image chart.png               # 比較グラフを出力
 bandstat --time audio.wav                            # タイムライン分析
-bandstat --time --interval 10 --weighted audio.wav   # 10秒間隔、K-weighted
-bandstat --quiet audio.wav                           # 静音モード
-bandstat --no-color audio.wav                        # 色出力を無効化
+bandstat --time --image chart.png audio.wav          # タイムライングラフを出力
+bandstat --time -i 10 -w audio.wav                   # 10秒間隔、K-weighted
 ```
 
 ### オプション
@@ -101,18 +106,22 @@ bandstat --no-color audio.wav                        # 色出力を無効化
 |------------|--------|------|
 | `--time` | `-t` | タイムライン分析モード |
 | `--interval <SECONDS>` | `-i` | タイムライン間隔（デフォルト: 20） |
-| `--weighted` | `-w` | タイムラインに K-weighting を適用 |
+| `--weighted` | `-w` | グラフ出力に K-weighting を適用 |
 | `--quiet` | `-q` | 説明を省略 |
 | `--no-color` | | 色出力を無効化 |
-| `--image <PATH>` | | 比較グラフを PNG で出力（2-4ファイル） |
+| `--image <PATH>` | | グラフを PNG で出力 |
 
 ### グラフ出力
 
-`--image` で比較グラフを生成できます。最大4ファイルまで対応しています。
+`--image` で PNG グラフを生成できます。
+
+- **単一ファイル**: 帯域分布の積み上げ棒グラフ（`-w` で K-weighted）
+- **比較（2-4ファイル）**: 棒グラフに K-weighted 折れ線を重ねて表示
+- **タイムライン**: 時間経過による帯域分布の積み上げ棒グラフ
 
 ![4ファイル比較](docs/comparison_4files.png)
 
-棒グラフが Raw（実測値）、折れ線が K-weighted（聴感補正値）です。
+比較モードでは棒グラフが Raw（実測値）、折れ線が K-weighted（聴感補正値）です。
 
 ### 出力の見方
 
