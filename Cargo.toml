@@ -1,6 +1,6 @@
 [package]
 name = "bandstat"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "Audio frequency band analyzer for comparing mixes against reference tracks"
 authors = ["cloned"]
