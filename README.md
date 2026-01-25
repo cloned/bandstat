@@ -5,6 +5,8 @@ bandstat is a command-line audio frequency band analyzer for comparing mixes aga
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg)](https://www.rust-lang.org/)
 
+**Try it online:** [bandstat.cloned.jp](https://bandstat.cloned.jp) — Browser version with core logic ported to TypeScript
+
 [日本語](README.ja.md)
 
 ## Example

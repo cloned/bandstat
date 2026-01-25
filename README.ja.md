@@ -5,6 +5,8 @@ bandstat はリファレンストラックとミックスを比較するため�
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg)](https://www.rust-lang.org/)
 
+**ブラウザ版:** [bandstat.cloned.jp](https://bandstat.cloned.jp) — コアロジックをTypeScriptに移植したブラウザ版
+
 ## 使用例
 
 リファレンストラックとミックスを比較する例です。
